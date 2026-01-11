@@ -757,17 +757,7 @@
             
             // Open app in new tab and set their session
             const newTab = window.open('', '_blank');
-            newTab.document.write(`
-                <html>
-                <head><title>Loading...</title></head>
-                <body>
-                    <script>
-                        localStorage.setItem('plm_session', '${sessionData}');
-                        window.location.href = 'https://willismcg.github.io/pool-league-manager/app.html';
-                    </script>
-                </body>
-                </html>
-            `);
+            newTab.document.write('<html><head><title>Loading...</title></head><body><scr' + 'ipt>localStorage.setItem("plm_session", \'' + sessionData + '\');window.location.href = "https://willismcg.github.io/pool-league-manager/app.html";</scr' + 'ipt></body></html>');
         }
 
         function viewAsOrgAdmin(orgId) {
