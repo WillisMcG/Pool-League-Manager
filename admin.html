@@ -434,8 +434,11 @@
                         <td class="px-4 py-3 text-sm">-</td>
                         <td class="px-4 py-3 text-sm">${date}</td>
                         <td class="px-4 py-3">
-                            <button onclick="viewOrg('${org.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold">
-                                View
+                            <button onclick="viewOrg('${org.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold mr-2">
+                                Details
+                            </button>
+                            <button onclick="viewAsOrgAdmin('${org.id}')" class="text-emerald-600 hover:text-emerald-800 text-sm font-semibold">
+                                👁️ View As
                             </button>
                         </td>
                     </tr>
@@ -481,9 +484,10 @@
                         <td class="px-4 py-3 text-sm">${user.phone || '-'}</td>
                         <td class="px-4 py-3 text-sm">${date}</td>
                         <td class="px-4 py-3">
-                            <button onclick="openResetModal('${user.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold">
-                                Reset Password
+                            <button onclick="openResetModal('${user.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold mr-2">
+                                Reset PW
                             </button>
+                            ${user.role === 'admin' ? `<button onclick="impersonateUser('${user.id}')" class="text-emerald-600 hover:text-emerald-800 text-sm font-semibold">👁️ View As</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -735,6 +739,48 @@
                 alert('Subscription canceled');
                 loadOrganizations();
             }
+        }
+
+        // ============================================
+        // IMPERSONATE USER
+        // ============================================
+        function impersonateUser(userId) {
+            const user = users.find(u => u.id === userId);
+            const org = organizations.find(o => o.id === user.org_id);
+            
+            if (!confirm(`View app as "${user.username}" from "${org?.name}"?\n\nThis will open the app in a new tab with their session.`)) {
+                return;
+            }
+            
+            // Create a session for this user
+            const sessionData = JSON.stringify({ id: user.id });
+            
+            // Open app in new tab and set their session
+            const newTab = window.open('', '_blank');
+            newTab.document.write(`
+                <html>
+                <head><title>Loading...</title></head>
+                <body>
+                    <script>
+                        localStorage.setItem('plm_session', '${sessionData}');
+                        window.location.href = 'https://willismcg.github.io/pool-league-manager/app.html';
+                    </script>
+                </body>
+                </html>
+            `);
+        }
+
+        function viewAsOrgAdmin(orgId) {
+            // Find the admin user for this org
+            const org = organizations.find(o => o.id === orgId);
+            const adminUser = users.find(u => u.org_id === orgId && u.role === 'admin');
+            
+            if (!adminUser) {
+                alert('No admin user found for this organization');
+                return;
+            }
+            
+            impersonateUser(adminUser.id);
         }
 
         // ============================================
