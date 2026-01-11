@@ -163,7 +163,8 @@
                 frequency: 'weekly',    // weekly, biweekly
                 positionNights: 2,      // 0, 1, 2, or more
                 positionNightPlacement: 'half', // 'half' (after each half), 'end' (all at end), 'start' (all at start)
-                byePoints: 'win'        // 'win' (counts as a win) or 'none' (worth 0)
+                byePoints: 'win',       // 'win' (counts as a win) or 'none' (worth 0)
+                timesToPlay: 2          // how many times each team faces every other team (1, 2, 3, 4)
             },
             // Manual match form data
             manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
@@ -2500,6 +2501,32 @@
                                 </label>
                             </div>
                         </div>
+                        
+                        <!-- Times to Play Each Team -->
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Times to Play Each Team</label>
+                            <p class="text-xs text-slate-500 mb-2">How many times should each team face every other team?</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${[1, 2, 3, 4].map(n => `
+                                    <label class="flex items-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all
+                                        ${cfg.timesToPlay === n ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                        <input type="radio" name="timesToPlay" value="${n}" 
+                                            ${cfg.timesToPlay === n ? 'checked' : ''}
+                                            onchange="window.state.customRR.timesToPlay = ${n}; window.render();"
+                                            class="sr-only">
+                                        <div class="text-center">
+                                            <div class="font-bold text-lg">${n}x</div>
+                                            <div class="text-xs opacity-75">${n === 1 ? 'Single' : n === 2 ? 'Home & Away' : n + ' rounds'}</div>
+                                        </div>
+                                    </label>
+                                `).join('')}
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2">
+                                ${cfg.timesToPlay === 1 ? '• Each team plays every other team once' : 
+                                  cfg.timesToPlay === 2 ? '• Each team plays every other team twice (once home, once away)' :
+                                  '• Each team plays every other team ' + cfg.timesToPlay + ' times'}
+                            </p>
+                        </div>
                     </div>
                     
                     <!-- Position Night Settings -->
@@ -2613,10 +2640,11 @@
                             <li>✓ <strong>Best of ${cfg.bestOf * 2 - 1}</strong> (first to ${cfg.bestOf} wins)</li>
                             <li>✓ Play on: <strong>${cfg.playDays.length > 0 ? cfg.playDays.map(d => d.charAt(0).toUpperCase() + d.slice(1,3)).join(', ') : 'No days selected!'}</strong></li>
                             <li>✓ Frequency: <strong>${cfg.frequency === 'weekly' ? 'Every week' : 'Every 2 weeks'}</strong></li>
+                            <li>✓ Play each team: <strong>${cfg.timesToPlay}x</strong> ${cfg.timesToPlay === 2 ? '(home & away)' : ''}</li>
                             <li>✓ <strong>${cfg.positionNights}</strong> position night${cfg.positionNights !== 1 ? 's' : ''} ${cfg.positionNights > 0 ? `(${cfg.positionNightPlacement === 'half' ? 'split evenly' : cfg.positionNightPlacement === 'end' ? 'at end' : 'at start'})` : ''}</li>
                             <li>✓ Bye weeks: <strong>${cfg.byePoints === 'win' ? 'Count as wins' : 'Worth nothing'}</strong></li>
-                            <li>✓ ${state.teams.length * 2} regular weeks + ${cfg.positionNights} position nights = <strong>${state.teams.length * 2 + cfg.positionNights} total weeks</strong></li>
-                            <li>✓ Estimated duration: <strong>~${Math.ceil((state.teams.length * 2 + cfg.positionNights) * (cfg.frequency === 'biweekly' ? 2 : 1))} weeks</strong></li>
+                            <li>✓ ${state.teams.length * cfg.timesToPlay} regular weeks + ${cfg.positionNights} position nights = <strong>${state.teams.length * cfg.timesToPlay + cfg.positionNights} total weeks</strong></li>
+                            <li>✓ Estimated duration: <strong>~${Math.ceil((state.teams.length * cfg.timesToPlay + cfg.positionNights) * (cfg.frequency === 'biweekly' ? 2 : 1))} weeks</strong></li>
                         </ul>
                     </div>
                     
@@ -2705,9 +2733,6 @@
             const n = teamList.length;
             const rounds = n - 1;
             
-            // Track home/away for reversal
-            const firstHalfHomeAway = {};
-            
             // Calculate dates based on play days and frequency
             const dayMap = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
             const playDayNums = cfg.playDays.map(d => dayMap[d]).sort((a, b) => a - b);
@@ -2794,12 +2819,16 @@
             }
             
             // Calculate when to insert position nights for 'half' placement
-            const totalRounds = rounds * 2; // Two halves
+            const timesToPlay = cfg.timesToPlay || 2;
+            const totalRounds = rounds * timesToPlay;
             let positionNightsInserted = 0;
             const positionNightInterval = cfg.positionNights > 0 ? Math.floor(totalRounds / (cfg.positionNights + 1)) : 0;
             let roundsSinceLastPosition = 0;
             
-            for (let half = 1; half <= 2; half++) {
+            // Track home/away history for fair distribution
+            const homeAwayHistory = {}; // key: matchKey, value: array of home team ids
+            
+            for (let roundSet = 1; roundSet <= timesToPlay; roundSet++) {
                 const rotating = [...teamList];
                 
                 for (let round = 0; round < rounds; round++) {
@@ -2823,7 +2852,7 @@
                                 awayTeamId: 'BYE',
                                 venue: 'BYE WEEK',
                                 isBye: true,
-                                half: half,
+                                half: roundSet,
                                 isPositionNight: false,
                                 matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
                             });
@@ -2839,36 +2868,46 @@
                                 awayTeamId: 'BYE',
                                 venue: 'BYE WEEK',
                                 isBye: true,
-                                half: half,
+                                half: roundSet,
                                 isPositionNight: false,
                                 matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
                             });
                             continue;
                         }
                         
-                        // Regular match
+                        // Regular match - determine home/away
                         let home, away;
                         const matchKey = [team1.id, team2.id].sort().join('-');
                         
-                        if (half === 1) {
-                            if ((round + i) % 2 === 0) {
-                                home = team1;
-                                away = team2;
-                            } else {
-                                home = team2;
-                                away = team1;
-                            }
-                            firstHalfHomeAway[matchKey] = home.id;
+                        // Initialize history if needed
+                        if (!homeAwayHistory[matchKey]) {
+                            homeAwayHistory[matchKey] = [];
+                        }
+                        
+                        // Count previous home games for each team in this matchup
+                        const team1HomeCount = homeAwayHistory[matchKey].filter(id => id === team1.id).length;
+                        const team2HomeCount = homeAwayHistory[matchKey].filter(id => id === team2.id).length;
+                        
+                        // Assign home to team with fewer home games, or alternate based on round
+                        if (team1HomeCount < team2HomeCount) {
+                            home = team1;
+                            away = team2;
+                        } else if (team2HomeCount < team1HomeCount) {
+                            home = team2;
+                            away = team1;
                         } else {
-                            const firstHalfHome = firstHalfHomeAway[matchKey];
-                            if (firstHalfHome === team1.id) {
-                                home = team2;
-                                away = team1;
-                            } else {
+                            // Equal home counts, alternate based on round + position
+                            if ((round + i + roundSet) % 2 === 0) {
                                 home = team1;
                                 away = team2;
+                            } else {
+                                home = team2;
+                                away = team1;
                             }
                         }
+                        
+                        // Record this assignment
+                        homeAwayHistory[matchKey].push(home.id);
                         
                         newSchedule.push({
                             id: `${Date.now()}-${weekNum}-${home.id}-${away.id}-${Math.random()}`,
@@ -2878,7 +2917,7 @@
                             awayTeamId: away.id,
                             venue: home.venue || 'TBD',
                             isBye: false,
-                            half: half,
+                            half: roundSet,
                             isPositionNight: false,
                             matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
                         });
