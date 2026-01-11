@@ -2,3078 +2,546 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pool League Manager</title>
-    
-    <!-- PWA Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Pool League">
-    <meta name="theme-color" content="#059669">
-    <meta name="description" content="Manage your pool league - teams, schedules, scores, and standings">
-    
-    <!-- PWA Icons for iOS -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23059669' width='100' height='100' rx='20'/><text x='50' y='68' text-anchor='middle' font-size='50'>🏆</text></svg>">
-    
-    <!-- Manifest -->
-    <link rel="manifest" href="data:application/json,{
-        &quot;name&quot;: &quot;Pool League Manager&quot;,
-        &quot;short_name&quot;: &quot;Pool League&quot;,
-        &quot;description&quot;: &quot;Manage your pool league&quot;,
-        &quot;start_url&quot;: &quot;.&quot;,
-        &quot;display&quot;: &quot;standalone&quot;,
-        &quot;background_color&quot;: &quot;%23059669&quot;,
-        &quot;theme_color&quot;: &quot;%23059669&quot;,
-        &quot;orientation&quot;: &quot;portrait&quot;,
-        &quot;icons&quot;: [{
-            &quot;src&quot;: &quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23059669' width='100' height='100' rx='20'/><text x='50' y='68' text-anchor='middle' font-size='50'>🏆</text></svg>&quot;,
-            &quot;sizes&quot;: &quot;192x192&quot;,
-            &quot;type&quot;: &quot;image/svg+xml&quot;
-        }]
-    }">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pool League Manager - Manage Your Pool League Online</title>
+    <meta name="description" content="The easiest way to manage your pool or billiards league. Schedule generation, score tracking, standings, and more.">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .tab-scroll::-webkit-scrollbar { height: 4px; }
-        .tab-scroll::-webkit-scrollbar-thumb { background: #10b981; border-radius: 2px; }
-        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-        .spinner { width: 50px; height: 50px; border: 4px solid #fff; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        /* PWA Styles */
-        html, body { 
-            overscroll-behavior: none; 
-            -webkit-touch-callout: none;
+        .gradient-bg {
+            background: linear-gradient(135deg, #064e3b 0%, #0f766e 50%, #115e59 100%);
         }
-        /* Safe area for iPhone notch */
-        body {
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-            padding-left: env(safe-area-inset-left);
-            padding-right: env(safe-area-inset-right);
+        .feature-card:hover {
+            transform: translateY(-4px);
         }
-        /* Prevent pull-to-refresh */
-        body.pwa-mode {
-            overflow: hidden;
+        .pricing-card:hover {
+            transform: scale(1.02);
         }
-        body.pwa-mode #app {
-            overflow-y: auto;
-            height: 100vh;
-            height: 100dvh;
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
         }
-        /* Install prompt banner */
-        .install-banner {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(to right, #059669, #0d9488);
-            color: white;
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            z-index: 9998;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        .float-animation {
+            animation: float 3s ease-in-out infinite;
         }
     </style>
 </head>
-<body>
-    <div id="app">
-        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(to bottom right,#0f172a,#064e3b,#134e4a);">
-            <div style="text-align:center;color:white;">
-                <div style="width:50px;height:50px;border:4px solid #fff;border-top-color:#10b981;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;"></div>
-                <p style="font-size:1.25rem;">Loading Pool League Manager...</p>
+<body class="bg-slate-50">
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-sm shadow-sm z-50">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="text-3xl">🎱</span>
+                <span class="text-xl font-black text-slate-800">Pool League Manager</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="#features" class="text-slate-600 hover:text-emerald-600 font-medium hidden sm:block">Features</a>
+                <a href="#pricing" class="text-slate-600 hover:text-emerald-600 font-medium hidden sm:block">Pricing</a>
+                <a href="app.html" class="text-emerald-600 hover:text-emerald-700 font-semibold">Sign In</a>
+                <a href="#signup" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors">
+                    Start Free Trial
+                </a>
             </div>
         </div>
-    </div>
-    <div id="loading" class="loading-overlay" style="display:none;"><div class="spinner"></div></div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="gradient-bg pt-32 pb-20 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div class="text-white">
+                    <h1 class="text-4xl md:text-5xl font-black mb-6 leading-tight">
+                        Manage Your Pool League 
+                        <span class="text-yellow-300">Like a Pro</span>
+                    </h1>
+                    <p class="text-xl text-emerald-100 mb-8">
+                        Stop juggling spreadsheets. Get automatic schedule generation, real-time standings, 
+                        player stats, and score tracking — all in one place.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <a href="#signup" class="px-8 py-4 bg-yellow-400 text-slate-900 font-black rounded-xl text-lg hover:bg-yellow-300 transition-colors text-center">
+                            Start 14-Day Free Trial →
+                        </a>
+                        <a href="#features" class="px-8 py-4 bg-white/10 text-white font-bold rounded-xl text-lg hover:bg-white/20 transition-colors text-center border-2 border-white/30">
+                            See Features
+                        </a>
+                    </div>
+                    <p class="mt-6 text-emerald-200 text-sm">✓ No credit card required &nbsp;✓ Cancel anytime</p>
+                </div>
+                <div class="relative hidden md:block">
+                    <div class="bg-white rounded-2xl shadow-2xl p-6 float-animation">
+                        <div class="bg-emerald-600 text-white rounded-xl p-4 mb-4">
+                            <h3 class="font-bold text-lg">🏆 League Standings</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+                                <span class="font-bold">1. Eight Ball Masters</span>
+                                <span class="text-emerald-600 font-bold">12-2</span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                                <span class="font-semibold">2. Cue Crew</span>
+                                <span class="text-slate-600">10-4</span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                                <span class="font-semibold">3. Pocket Rockets</span>
+                                <span class="text-slate-600">9-5</span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                                <span class="font-semibold">4. Break & Run</span>
+                                <span class="text-slate-600">8-6</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Social Proof -->
+    <section class="py-12 bg-white border-b">
+        <div class="max-w-6xl mx-auto px-4 text-center">
+            <p class="text-slate-500 mb-6">Trusted by pool leagues everywhere</p>
+            <div class="flex flex-wrap justify-center gap-8 items-center opacity-60">
+                <span class="text-2xl font-black text-slate-400">🎱 APA Leagues</span>
+                <span class="text-2xl font-black text-slate-400">🏆 Bar Leagues</span>
+                <span class="text-2xl font-black text-slate-400">🎯 Club Leagues</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
+                    Everything You Need to Run Your League
+                </h2>
+                <p class="text-xl text-slate-600 max-w-2xl mx-auto">
+                    From schedule creation to final standings, we've got you covered.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">📅</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Auto Schedule Generation</h3>
+                    <p class="text-slate-600">
+                        Generate complete round-robin schedules with one click. Handles byes, 
+                        home/away balance, and venue conflicts automatically.
+                    </p>
+                </div>
+
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Live Standings</h3>
+                    <p class="text-slate-600">
+                        Real-time team and player statistics. Win percentages, games won/lost, 
+                        and automatic ranking updates.
+                    </p>
+                </div>
+
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">📱</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Easy Score Entry</h3>
+                    <p class="text-slate-600">
+                        Captains submit scores from their phone. Dual-submission system ensures accuracy 
+                        with automatic conflict detection.
+                    </p>
+                </div>
+
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">👥</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Team Management</h3>
+                    <p class="text-slate-600">
+                        Manage rosters, assign captains, track player stats. Each captain gets 
+                        their own login to manage their team.
+                    </p>
+                </div>
+
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">🏆</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Position Nights</h3>
+                    <p class="text-slate-600">
+                        Automatic playoff matchups based on standings. 1st vs 2nd, 3rd vs 4th, 
+                        and so on — calculated automatically.
+                    </p>
+                </div>
+
+                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
+                    <div class="text-5xl mb-4">📜</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Season History</h3>
+                    <p class="text-slate-600">
+                        Keep records of past seasons. Switch between seasons easily and 
+                        maintain complete historical data.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-20 px-4 bg-slate-100">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
+                    Up and Running in Minutes
+                </h2>
+            </div>
+
+            <div class="grid md:grid-cols-4 gap-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">1</div>
+                    <h3 class="font-bold text-lg mb-2">Sign Up</h3>
+                    <p class="text-slate-600">Create your league in 30 seconds</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">2</div>
+                    <h3 class="font-bold text-lg mb-2">Add Teams</h3>
+                    <p class="text-slate-600">Enter your teams and players</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">3</div>
+                    <h3 class="font-bold text-lg mb-2">Generate Schedule</h3>
+                    <p class="text-slate-600">One click creates your full season</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">4</div>
+                    <h3 class="font-bold text-lg mb-2">Play!</h3>
+                    <p class="text-slate-600">Track scores and watch standings update</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-20 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
+                    Simple, Affordable Pricing
+                </h2>
+                <p class="text-xl text-slate-600">
+                    Start free, upgrade when you're ready.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <!-- Starter Plan -->
+                <div class="pricing-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-200 transition-all duration-300">
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl font-bold text-slate-800">Starter</h3>
+                        <div class="mt-4">
+                            <span class="text-5xl font-black text-slate-800">$19</span>
+                            <span class="text-slate-500">/month</span>
+                        </div>
+                        <p class="text-sm text-slate-500 mt-2">or $205/year (save 10%)</p>
+                    </div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center gap-3">
+                            <span class="text-emerald-500">✓</span>
+                            <span>Up to 12 teams</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-emerald-500">✓</span>
+                            <span>Up to 100 players</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-emerald-500">✓</span>
+                            <span>10 seasons of history</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-emerald-500">✓</span>
+                            <span>Auto schedule generation</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-emerald-500">✓</span>
+                            <span>Email support</span>
+                        </li>
+                    </ul>
+                    <a href="#signup" class="block w-full py-3 text-center bg-slate-100 text-slate-800 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                        Start Free Trial
+                    </a>
+                </div>
+
+                <!-- Pro Plan -->
+                <div class="pricing-card bg-emerald-600 rounded-2xl p-8 shadow-lg border-2 border-emerald-500 transition-all duration-300 relative">
+                    <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                        <span class="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold">MOST POPULAR</span>
+                    </div>
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl font-bold text-white">Pro</h3>
+                        <div class="mt-4">
+                            <span class="text-5xl font-black text-white">$39</span>
+                            <span class="text-emerald-200">/month</span>
+                        </div>
+                        <p class="text-sm text-emerald-200 mt-2">or $421/year (save 10%)</p>
+                    </div>
+                    <ul class="space-y-3 mb-8 text-white">
+                        <li class="flex items-center gap-3">
+                            <span class="text-yellow-300">✓</span>
+                            <span>Up to 50 teams</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-yellow-300">✓</span>
+                            <span>Up to 500 players</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-yellow-300">✓</span>
+                            <span>50 seasons of history</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-yellow-300">✓</span>
+                            <span>Everything in Starter</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-yellow-300">✓</span>
+                            <span>Priority support</span>
+                        </li>
+                    </ul>
+                    <a href="#signup" class="block w-full py-3 text-center bg-white text-emerald-600 font-bold rounded-xl hover:bg-emerald-50 transition-colors">
+                        Start Free Trial
+                    </a>
+                </div>
+            </div>
+
+            <p class="text-center text-slate-500 mt-8">
+                All plans include a 14-day free trial. No credit card required.
+            </p>
+        </div>
+    </section>
+
+    <!-- Signup Section -->
+    <section id="signup" class="py-20 px-4 gradient-bg">
+        <div class="max-w-md mx-auto">
+            <div class="bg-white rounded-2xl shadow-2xl p-8">
+                <div class="text-center mb-8">
+                    <div class="text-5xl mb-4">🎱</div>
+                    <h2 class="text-2xl font-black text-slate-800">Start Your Free Trial</h2>
+                    <p class="text-slate-600 mt-2">14 days free, no credit card required</p>
+                </div>
+
+                <form id="signup-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">League Name</label>
+                        <input type="text" id="league-name" placeholder="e.g., Downtown Pool League" required
+                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Your Name</label>
+                        <input type="text" id="admin-name" placeholder="Your full name" required
+                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Email</label>
+                        <input type="email" id="admin-email" placeholder="you@example.com" required
+                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
+                        <input type="tel" id="admin-phone" placeholder="(555) 123-4567" required
+                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Password</label>
+                        <input type="password" id="admin-password" placeholder="At least 6 characters" required minlength="6"
+                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                    </div>
+
+                    <div id="signup-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"></div>
+                    <div id="signup-success" class="hidden bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm"></div>
+
+                    <button type="submit" id="signup-btn"
+                        class="w-full py-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-lg">
+                        Create My League →
+                    </button>
+                </form>
+
+                <p class="text-center text-sm text-slate-500 mt-6">
+                    Already have an account? <a href="app.html" class="text-emerald-600 font-semibold hover:underline">Sign in</a>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 py-12 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🎱</span>
+                    <span class="text-lg font-bold text-white">Pool League Manager</span>
+                </div>
+                <div class="flex gap-6 text-sm">
+                    <a href="#features" class="hover:text-white">Features</a>
+                    <a href="#pricing" class="hover:text-white">Pricing</a>
+                    <a href="app.html" class="hover:text-white">Sign In</a>
+                </div>
+            </div>
+            <div class="border-t border-slate-800 mt-8 pt-8 text-center text-sm">
+                <p>© 2025 Pool League Manager. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
 
     <script>
-        // Wait for DOM and libraries to be ready
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if Supabase loaded
-            if (typeof window.supabase === 'undefined') {
-                document.getElementById('app').innerHTML = '<div style="padding:20px;color:red;text-align:center;"><h2>Error Loading</h2><p>Could not load required libraries. Please check your internet connection and refresh.</p></div>';
-                return;
-            }
-            
-            startApp();
-        });
-        
-        function startApp() {
-        console.log('Pool League Manager Loading (Supabase Edition)...');
-
-        // ============================================
-        // SUPABASE CONFIGURATION
-        // ============================================
+        // Supabase configuration
         const SUPABASE_URL = 'https://hprdhlletatixqysqegi.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcmRobGxldGF0aXhxeXNxZWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTU1NDMsImV4cCI6MjA4MzY3MTU0M30._wrv6ONjG3JRkpA1FDPFkKMSn0bi6vhMiR0UZB40IRk';
         
-        let db;
-        try {
-            db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        } catch (e) {
-            console.error('Failed to create Supabase client:', e);
-            document.getElementById('app').innerHTML = '<div style="padding:20px;color:red;text-align:center;"><h2>Connection Error</h2><p>Could not connect to database. Please refresh the page.</p></div>';
-            return;
-        }
+        const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Loading helpers
-        function showLoading() { document.getElementById('loading').style.display = 'flex'; }
-        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
-
-        // ============================================
-        // STATE
-        // ============================================
-        let state = {
-            // Organization (multi-tenant)
-            organization: null,
+        // Handle signup
+        document.getElementById('signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            // Core data
-            users: [],
-            teams: [],
-            schedule: [],
-            submissions: [],
-            matches: [],
-            venues: [],
-            seasons: [],
-            currentSeason: null,
-            currentUser: null,
-            activeTab: 'schedule',
-            leagueName: 'Pool League',
-            showCreateTeam: false,
-            showGenSchedule: false,
-            showManageVenues: false,
-            showManageSeasons: false,
-            selectedMatch: '',
-            selectedTeam: '',
-            matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
-            initialized: false
-        };
-
-        // ============================================
-        // DATABASE OPERATIONS
-        // ============================================
-        
-        async function loadAllData() {
-            showLoading();
-            try {
-                const orgId = state.organization?.id;
-                if (!orgId) {
-                    console.error('No organization loaded');
-                    hideLoading();
-                    return;
-                }
-
-                const { data: settings, error: settingsError } = await db.from('league_settings')
-                    .select('*')
-                    .eq('org_id', orgId)
-                    .limit(1)
-                    .single();
-                console.log('Settings:', settings, settingsError);
-                if (settings) {
-                    state.leagueName = settings.name;
-                    state.venues = settings.venues || [];
-                }
-
-                // Load seasons for this org
-                const { data: seasons } = await db.from('seasons')
-                    .select('*')
-                    .eq('org_id', orgId)
-                    .order('created_at', { ascending: false });
-                state.seasons = (seasons || []).map(s => ({
-                    id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
-                    isActive: s.is_active, createdAt: s.created_at, orgId: s.org_id
-                }));
-                
-                // Set current season to active one, or most recent
-                state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0] || null;
-
-                const { data: users, error: usersError } = await db.from('users')
-                    .select('*')
-                    .eq('org_id', orgId);
-                console.log('Users:', users, usersError);
-                state.users = (users || []).map(u => ({
-                    id: u.id, username: u.username, password: u.password, phone: u.phone,
-                    role: u.role, teamId: u.team_id, playerId: u.player_id,
-                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
-                }));
-
-                const { data: teams, error: teamsError } = await db.from('teams')
-                    .select('*')
-                    .eq('org_id', orgId);
-                console.log('Teams:', teams, teamsError);
-                state.teams = (teams || []).map(t => ({
-                    id: t.id, name: t.name, venue: t.venue || '', captain: t.captain || '',
-                    phone: t.phone || '', players: t.players || [], orgId: t.org_id
-                }));
-
-                // Load schedule for current season
-                await loadSeasonData();
-
-                state.initialized = true;
-                console.log('Data loaded:', { org: orgId, users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length, seasons: state.seasons.length });
-            } catch (error) {
-                console.error('Error loading data:', error);
-                state.initialized = true;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function loadSeasonData() {
-            const seasonId = state.currentSeason?.id;
+            const btn = document.getElementById('signup-btn');
+            const errorDiv = document.getElementById('signup-error');
+            const successDiv = document.getElementById('signup-success');
             
-            if (seasonId) {
-                const { data: schedule } = await db.from('schedule').select('*').eq('season_id', seasonId);
-                state.schedule = (schedule || []).map(s => ({
-                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
-                    awayTeamId: s.away_team_id, venue: s.venue || 'TBD', isBye: s.is_bye,
-                    half: s.half, isPositionNight: s.is_position_night,
-                    positionHome: s.position_home, positionAway: s.position_away,
-                    seasonId: s.season_id
-                }));
-
-                const { data: submissions } = await db.from('submissions').select('*').eq('season_id', seasonId);
-                state.submissions = (submissions || []).map(s => ({
-                    id: s.id, scheduleId: s.schedule_id, teamId: s.team_id,
-                    homeScore: s.home_score, awayScore: s.away_score,
-                    matchups: s.matchups || [], timestamp: s.created_at,
-                    seasonId: s.season_id
-                }));
-
-                const { data: matches } = await db.from('matches').select('*').eq('season_id', seasonId);
-                state.matches = (matches || []).map(m => ({
-                    id: m.id, scheduleId: m.schedule_id, homeScore: m.home_score,
-                    awayScore: m.away_score, matchups: m.matchups || [],
-                    approved: m.approved, timestamp: m.created_at,
-                    seasonId: m.season_id
-                }));
-            } else {
-                // No season - load all data (backwards compatibility)
-                const { data: schedule } = await db.from('schedule').select('*');
-                state.schedule = (schedule || []).map(s => ({
-                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
-                    awayTeamId: s.away_team_id, venue: s.venue || 'TBD', isBye: s.is_bye,
-                    half: s.half, isPositionNight: s.is_position_night,
-                    positionHome: s.position_home, positionAway: s.position_away
-                }));
-
-                const { data: submissions } = await db.from('submissions').select('*');
-                state.submissions = (submissions || []).map(s => ({
-                    id: s.id, scheduleId: s.schedule_id, teamId: s.team_id,
-                    homeScore: s.home_score, awayScore: s.away_score,
-                    matchups: s.matchups || [], timestamp: s.created_at
-                }));
-
-                const { data: matches } = await db.from('matches').select('*');
-                state.matches = (matches || []).map(m => ({
-                    id: m.id, scheduleId: m.schedule_id, homeScore: m.home_score,
-                    awayScore: m.away_score, matchups: m.matchups || [],
-                    approved: m.approved, timestamp: m.created_at
-                }));
-            }
-        }
-
-        async function saveLeagueName(name) {
-            showLoading();
-            try {
-                const { data: settings } = await db.from('league_settings').select('id').limit(1).single();
-                await db.from('league_settings').update({ name }).eq('id', settings.id);
-                state.leagueName = name;
-                render();
-            } catch (error) {
-                console.error('Error saving league name:', error);
-                alert('Error saving settings');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function addVenue(name, address, phone) {
-            if (!name || !name.trim()) {
-                alert('Please enter a venue name');
-                return false;
-            }
-            name = name.trim();
+            // Reset messages
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
             
-            // Check if venue name already exists
-            const exists = state.venues.some(v => {
-                const venueName = typeof v === 'string' ? v : v.name;
-                return venueName.toLowerCase() === name.toLowerCase();
-            });
+            // Get form values
+            const leagueName = document.getElementById('league-name').value.trim();
+            const adminName = document.getElementById('admin-name').value.trim();
+            const adminEmail = document.getElementById('admin-email').value.trim();
+            const adminPhone = document.getElementById('admin-phone').value.trim();
+            const adminPassword = document.getElementById('admin-password').value;
             
-            if (exists) {
-                alert('Venue already exists');
-                return false;
-            }
-            
-            showLoading();
-            try {
-                const newVenue = { 
-                    name: name, 
-                    address: (address || '').trim(), 
-                    phone: (phone || '').trim() 
-                };
-                const newVenues = [...state.venues, newVenue];
-                const { data: settings } = await db.from('league_settings').select('id').limit(1).single();
-                await db.from('league_settings').update({ venues: newVenues }).eq('id', settings.id);
-                state.venues = newVenues;
-                render();
-                return true;
-            } catch (error) {
-                console.error('Error adding venue:', error);
-                alert('Error adding venue');
-                return false;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function deleteVenue(venueName) {
-            if (!confirm('Delete venue "' + venueName + '"?')) return;
-            showLoading();
-            try {
-                const newVenues = state.venues.filter(v => {
-                    const name = typeof v === 'string' ? v : v.name;
-                    return name !== venueName;
-                });
-                const { data: settings } = await db.from('league_settings').select('id').limit(1).single();
-                await db.from('league_settings').update({ venues: newVenues }).eq('id', settings.id);
-                state.venues = newVenues;
-                render();
-            } catch (error) {
-                console.error('Error deleting venue:', error);
-                alert('Error deleting venue');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // SEASON FUNCTIONS
-        // ============================================
-        async function createSeason(name) {
-            if (!name || !name.trim()) {
-                alert('Please enter a season name');
-                return false;
-            }
-            if (!state.organization?.id) { alert('No organization loaded'); return false; }
-            
-            showLoading();
-            try {
-                // Deactivate all other seasons for this org
-                await db.from('seasons').update({ is_active: false }).eq('org_id', state.organization.id);
-                
-                // Create new active season
-                const { data, error } = await db.from('seasons').insert([{
-                    name: name.trim(),
-                    is_active: true,
-                    org_id: state.organization.id
-                }]).select().single();
-                
-                if (error) throw error;
-                
-                const newSeason = {
-                    id: data.id,
-                    name: data.name,
-                    startDate: data.start_date,
-                    endDate: data.end_date,
-                    isActive: data.is_active,
-                    createdAt: data.created_at,
-                    orgId: data.org_id
-                };
-                
-                state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
-                state.currentSeason = newSeason;
-                state.schedule = [];
-                state.matches = [];
-                state.submissions = [];
-                
-                alert('Season "' + name + '" created and set as active!');
-                render();
-                return true;
-            } catch (error) {
-                console.error('Error creating season:', error);
-                alert('Error creating season');
-                return false;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function switchSeason(seasonId) {
-            const season = state.seasons.find(s => s.id === seasonId);
-            if (!season) return;
-            
-            showLoading();
-            try {
-                state.currentSeason = season;
-                await loadSeasonData();
-                render();
-            } catch (error) {
-                console.error('Error switching season:', error);
-                alert('Error switching season');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function setActiveSeason(seasonId) {
-            showLoading();
-            try {
-                // Deactivate all seasons
-                await db.from('seasons').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
-                
-                // Activate selected season
-                await db.from('seasons').update({ is_active: true }).eq('id', seasonId);
-                
-                state.seasons = state.seasons.map(s => ({
-                    ...s,
-                    isActive: s.id === seasonId
-                }));
-                
-                const season = state.seasons.find(s => s.id === seasonId);
-                state.currentSeason = season;
-                await loadSeasonData();
-                
-                alert('Season "' + season.name + '" is now active!');
-                render();
-            } catch (error) {
-                console.error('Error setting active season:', error);
-                alert('Error setting active season');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function deleteSeason(seasonId) {
-            const season = state.seasons.find(s => s.id === seasonId);
-            if (!season) return;
-            
-            if (state.seasons.length === 1) {
-                alert('Cannot delete the only season');
+            // Validation
+            if (!leagueName || !adminName || !adminEmail || !adminPhone || !adminPassword) {
+                errorDiv.textContent = 'Please fill in all fields';
+                errorDiv.classList.remove('hidden');
                 return;
             }
             
-            if (!confirm('Delete season "' + season.name + '" and all its schedule/match data? This cannot be undone!')) return;
+            if (adminPassword.length < 6) {
+                errorDiv.textContent = 'Password must be at least 6 characters';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
             
-            showLoading();
+            // Clean phone number
+            const cleanPhone = adminPhone.replace(/\D/g, '');
+            if (cleanPhone.length < 10) {
+                errorDiv.textContent = 'Please enter a valid phone number';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            // Disable button
+            btn.disabled = true;
+            btn.textContent = 'Creating your league...';
+            
             try {
-                // Delete all data for this season
-                await db.from('matches').delete().eq('season_id', seasonId);
-                await db.from('submissions').delete().eq('season_id', seasonId);
-                await db.from('schedule').delete().eq('season_id', seasonId);
-                await db.from('seasons').delete().eq('id', seasonId);
-                
-                state.seasons = state.seasons.filter(s => s.id !== seasonId);
-                
-                // If we deleted the current season, switch to another
-                if (state.currentSeason?.id === seasonId) {
-                    state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0];
-                    await loadSeasonData();
-                }
-                
-                alert('Season deleted');
-                render();
-            } catch (error) {
-                console.error('Error deleting season:', error);
-                alert('Error deleting season');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // Confirm delete with extra safety
-        async function confirmDeleteSeason(seasonId, seasonName) {
-            if (state.seasons.length <= 1) {
-                alert('Cannot delete the only season. Create a new season first.');
-                return;
-            }
-            
-            const season = state.seasons.find(s => s.id === seasonId);
-            if (!season) return;
-            
-            // Check if season has matches
-            const { data: matchCount } = await db.from('matches')
-                .select('id', { count: 'exact', head: true })
-                .eq('season_id', seasonId);
-            
-            const hasMatches = matchCount && matchCount.length > 0;
-            
-            let confirmMsg = `Delete season "${seasonName}"?\n\n`;
-            if (hasMatches) {
-                confirmMsg += '⚠️ WARNING: This season has recorded match results!\n\n';
-            }
-            confirmMsg += 'This will permanently delete:\n';
-            confirmMsg += '• All schedule entries\n';
-            confirmMsg += '• All match results\n';
-            confirmMsg += '• All pending submissions\n\n';
-            confirmMsg += 'Type "DELETE" to confirm:';
-            
-            const confirmation = prompt(confirmMsg);
-            if (confirmation !== 'DELETE') {
-                if (confirmation !== null) {
-                    alert('Deletion cancelled. You must type "DELETE" exactly to confirm.');
-                }
-                return;
-            }
-            
-            await deleteSeason(seasonId);
-        }
-
-        // Generate schedule for a NEW season (doesn't overwrite current)
-        async function generateNewSeasonSchedule() {
-            const seasonName = document.getElementById('new-season-name-gen')?.value?.trim();
-            const startDate = document.getElementById('gen-start-date')?.value;
-            
-            if (!seasonName) {
-                alert('Please enter a season name');
-                return;
-            }
-            if (!startDate) {
-                alert('Please select a start date');
-                return;
-            }
-            if (state.teams.length < 2) {
-                alert('Need at least 2 teams to generate a schedule');
-                return;
-            }
-            if (!state.organization?.id) {
-                alert('No organization loaded');
-                return;
-            }
-            
-            // Check for duplicate name
-            if (state.seasons.find(s => s.name.toLowerCase() === seasonName.toLowerCase())) {
-                alert('A season with this name already exists. Please choose a different name.');
-                return;
-            }
-            
-            showLoading();
-            try {
-                const orgId = state.organization.id;
-                
-                // 1. Archive current active season (don't delete it)
-                if (state.currentSeason?.isActive) {
-                    await db.from('seasons').update({ is_active: false }).eq('id', state.currentSeason.id);
-                }
-                
-                // 2. Create new season
-                const { data: newSeasonData, error: seasonError } = await db.from('seasons').insert([{
-                    name: seasonName,
-                    is_active: true,
-                    org_id: orgId
-                }]).select().single();
-                
-                if (seasonError) throw seasonError;
-                
-                const newSeason = {
-                    id: newSeasonData.id,
-                    name: newSeasonData.name,
-                    startDate: newSeasonData.start_date,
-                    endDate: newSeasonData.end_date,
-                    isActive: true,
-                    createdAt: newSeasonData.created_at,
-                    orgId: newSeasonData.org_id
-                };
-                
-                // 3. Generate schedule for new season
-                const numTeams = state.teams.length;
-                const weeksPerHalf = numTeams % 2 === 1 ? numTeams : numTeams - 1;
-                const schedule = generateRoundRobinSchedule(startDate, weeksPerHalf);
-                
-                const dbSchedule = schedule.map(s => ({
-                    week: s.week, date: s.date, home_team_id: s.homeTeamId,
-                    away_team_id: s.awayTeamId, venue: s.venue, is_bye: s.isBye,
-                    half: s.half, is_position_night: s.isPositionNight,
-                    position_home: s.positionHome, position_away: s.positionAway,
-                    season_id: newSeason.id,
-                    org_id: orgId
-                }));
-                
-                const { data: scheduleData } = await db.from('schedule').insert(dbSchedule).select();
-                
-                // 4. Update state
-                state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
-                state.currentSeason = newSeason;
-                state.schedule = scheduleData.map(s => ({
-                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
-                    awayTeamId: s.away_team_id, venue: s.venue, isBye: s.is_bye,
-                    half: s.half, isPositionNight: s.is_position_night,
-                    positionHome: s.position_home, positionAway: s.position_away,
-                    seasonId: s.season_id, orgId: s.org_id
-                }));
-                state.matches = [];
-                state.submissions = [];
-                state.showGenSchedule = false;
-                
-                alert(`✅ Season "${seasonName}" created!\n\n${weeksPerHalf * 2 + 2} weeks generated.\n\nYour previous season has been archived and is still accessible.`);
-                render();
-            } catch (error) {
-                console.error('Error creating season:', error);
-                alert('Error creating season: ' + error.message);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // AUTH FUNCTIONS
-        // ============================================
-        async function login(username, password) {
-            showLoading();
-            try {
-                // Find user by username and password
-                const { data: users, error } = await db.from('users')
-                    .select('*')
-                    .eq('username', username)
-                    .eq('password', password)
+                // Check if email already exists
+                const { data: existingUser } = await db.from('users')
+                    .select('id')
+                    .eq('username', adminEmail)
                     .limit(1);
                 
-                if (error) throw error;
-                if (!users || users.length === 0) {
-                    hideLoading();
-                    return false;
+                if (existingUser && existingUser.length > 0) {
+                    throw new Error('An account with this email already exists. Please sign in instead.');
                 }
                 
-                const userData = users[0];
-                const user = {
-                    id: userData.id, username: userData.username, password: userData.password,
-                    phone: userData.phone, role: userData.role, teamId: userData.team_id,
-                    playerId: userData.player_id, createdAt: userData.created_at,
-                    createdBy: userData.created_by, orgId: userData.org_id
-                };
+                // Create slug from league name
+                const slug = leagueName.toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-|-$/g, '')
+                    .substring(0, 50);
                 
-                // Load the user's organization
-                if (user.orgId) {
-                    const { data: org, error: orgError } = await db.from('organizations')
-                        .select('*')
-                        .eq('id', user.orgId)
-                        .single();
-                    
-                    if (orgError) throw orgError;
-                    
-                    state.organization = {
-                        id: org.id,
-                        name: org.name,
-                        slug: org.slug,
-                        subscriptionStatus: org.subscription_status,
-                        subscriptionTier: org.subscription_tier,
-                        billingInterval: org.billing_interval,
-                        trialEndsAt: org.trial_ends_at,
-                        maxTeams: org.max_teams,
-                        maxUsers: org.max_users,
-                        maxSeasons: org.max_seasons
-                    };
-                    
-                    // Check subscription status
-                    const isValid = checkSubscriptionValid();
-                    if (!isValid) {
-                        hideLoading();
-                        alert('Your subscription has expired. Please contact your administrator to renew.');
-                        return false;
-                    }
-                }
-                
-                state.currentUser = user;
-                localStorage.setItem('plm_session', JSON.stringify({ id: user.id }));
-                
-                // Load all org data
-                await loadAllData();
-                
-                render();
-                return true;
-            } catch (error) {
-                console.error('Login error:', error);
-                hideLoading();
-                return false;
-            }
-        }
-        
-        function checkSubscriptionValid() {
-            if (!state.organization) return false;
-            
-            const status = state.organization.subscriptionStatus;
-            
-            // Active subscription
-            if (status === 'active') return true;
-            
-            // Valid trial
-            if (status === 'trial') {
-                const trialEnd = new Date(state.organization.trialEndsAt);
-                if (trialEnd > new Date()) return true;
-            }
-            
-            return false;
-        }
-
-        function logout() {
-            state.currentUser = null;
-            state.activeTab = 'schedule';
-            localStorage.removeItem('plm_session');
-            render();
-        }
-
-        async function createAccount(username, password, phone, role = null, teamId = null) {
-            if (!username || !password) { alert('Username and password required'); return false; }
-            if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
-            if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
-            if (!state.organization?.id) { alert('No organization loaded'); return false; }
-
-            showLoading();
-            try {
-                // All users are players unless specified
-                const finalRole = role || 'player';
-                
-                const { data, error } = await db.from('users').insert([{
-                    username, password, phone,
-                    role: finalRole,
-                    team_id: teamId || null,
-                    org_id: state.organization.id,
-                    created_by: state.currentUser?.id || null
-                }]).select().single();
-
-                if (error) throw error;
-
-                const user = {
-                    id: data.id, username: data.username, password: data.password,
-                    phone: data.phone, role: data.role, teamId: data.team_id,
-                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
-                };
-
-                state.users = [...state.users, user];
-
-                alert('User "' + username + '" created as ' + finalRole + '!');
-                render();
-                return true;
-            } catch (error) {
-                console.error('Error creating account:', error);
-                alert('Error creating account: ' + error.message);
-                return false;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function deleteUser(userId) {
-            if (userId === state.currentUser.id) { alert('Cannot delete yourself'); return; }
-            const user = state.users.find(u => u.id === userId);
-            if (!confirm(`Delete user "${user.username}"?`)) return;
-
-            showLoading();
-            try {
-                await db.from('users').delete().eq('id', userId);
-                state.users = state.users.filter(u => u.id !== userId);
-                render();
-            } catch (error) {
-                console.error('Error deleting user:', error);
-                alert('Error deleting user');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function resetPassword(userId) {
-            const user = state.users.find(u => u.id === userId);
-            if (!user) return;
-            
-            const newPassword = prompt(`Enter new password for "${user.username}":\n\n(Minimum 4 characters)`);
-            if (!newPassword) return;
-            if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return; }
-            
-            showLoading();
-            try {
-                await db.from('users').update({ password: newPassword }).eq('id', userId);
-                state.users = state.users.map(u => u.id === userId ? { ...u, password: newPassword } : u);
-                alert(`Password reset for "${user.username}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
-                render();
-            } catch (error) {
-                console.error('Error resetting password:', error);
-                alert('Error resetting password');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function selfServiceReset(username, phone) {
-            if (!username || !phone) { alert('Username and phone required'); return false; }
-            
-            showLoading();
-            try {
-                // Look up user by username and verify phone
-                const { data: users, error } = await db.from('users')
-                    .select('*')
-                    .eq('username', username)
+                // Check if slug exists
+                const { data: existingOrg } = await db.from('organizations')
+                    .select('id')
+                    .eq('slug', slug)
                     .limit(1);
                 
-                if (error) throw error;
-                
-                if (!users || users.length === 0) {
-                    alert('Username not found');
-                    return false;
+                let finalSlug = slug;
+                if (existingOrg && existingOrg.length > 0) {
+                    finalSlug = slug + '-' + Date.now().toString().slice(-4);
                 }
                 
-                const user = users[0];
+                // Calculate trial end date (14 days from now)
+                const trialEndsAt = new Date();
+                trialEndsAt.setDate(trialEndsAt.getDate() + 14);
                 
-                // Normalize phone numbers for comparison (remove all non-digits)
-                const storedPhone = (user.phone || '').replace(/\D/g, '');
-                const inputPhone = phone.replace(/\D/g, '');
-                
-                if (storedPhone !== inputPhone) {
-                    alert('Phone number does not match our records');
-                    return false;
-                }
-                
-                // Phone verified - prompt for new password
-                const newPassword = prompt('Phone verified! Enter your new password:\n\n(Minimum 4 characters)');
-                if (!newPassword) return false;
-                if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return false; }
-                
-                await db.from('users').update({ password: newPassword }).eq('id', user.id);
-                alert('Password reset successfully! You can now log in with your new password.');
-                return true;
-            } catch (error) {
-                console.error('Error resetting password:', error);
-                alert('Error resetting password');
-                return false;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function assignTeam(userId, teamId) {
-            showLoading();
-            try {
-                await db.from('users').update({ team_id: teamId || null }).eq('id', userId);
-                state.users = state.users.map(u => u.id === userId ? { ...u, teamId: teamId || null } : u);
-                render();
-            } catch (error) {
-                console.error('Error assigning team:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // TEAM FUNCTIONS
-        // ============================================
-        async function createTeam(name, venue, captain) {
-            if (!name) { alert('Team name required'); return false; }
-            if (!state.organization?.id) { alert('No organization loaded'); return false; }
-
-            showLoading();
-            try {
-                const { data, error } = await db.from('teams').insert([{
-                    name, venue: venue || '', captain: captain || '', players: [],
-                    org_id: state.organization.id
+                // 1. Create organization
+                const { data: orgData, error: orgError } = await db.from('organizations').insert([{
+                    name: leagueName,
+                    slug: finalSlug,
+                    subscription_status: 'trial',
+                    subscription_tier: 'trial',
+                    trial_ends_at: trialEndsAt.toISOString(),
+                    max_teams: 12,
+                    max_users: 100,
+                    max_seasons: 2
                 }]).select().single();
-
-                if (error) throw error;
-
-                const newTeam = {
-                    id: data.id, name: data.name, venue: data.venue,
-                    captain: data.captain, players: data.players || [], orgId: data.org_id
-                };
                 
-                state.teams = [...state.teams, newTeam];
-
-                // Auto-assign captain to this team
-                if (captain) {
-                    const captainUser = state.users.find(u => u.username === captain);
-                    if (captainUser) {
-                        await db.from('users').update({ team_id: newTeam.id }).eq('id', captainUser.id);
-                        state.users = state.users.map(u => u.id === captainUser.id ? { ...u, teamId: newTeam.id } : u);
-                    }
-                }
-
-                state.showCreateTeam = false;
-                alert('Team "' + name + '" created!');
-                render();
-                return true;
-            } catch (error) {
-                console.error('Error creating team:', error);
-                alert('Error creating team: ' + error.message);
-                return false;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function deleteTeam(teamId) {
-            const team = state.teams.find(t => t.id === teamId);
-            if (!confirm(`Delete team "${team.name}"?`)) return;
-
-            showLoading();
-            try {
-                await db.from('users').update({ team_id: null }).eq('team_id', teamId);
-                await db.from('teams').delete().eq('id', teamId);
-                state.teams = state.teams.filter(t => t.id !== teamId);
-                state.users = state.users.map(u => u.teamId === teamId ? { ...u, teamId: null } : u);
-                render();
-            } catch (error) {
-                console.error('Error deleting team:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function addPlayer(teamId, playerName) {
-            if (!playerName.trim()) return;
-
-            showLoading();
-            try {
-                const team = state.teams.find(t => t.id === teamId);
-                const playerId = Date.now().toString();
-                const newPlayers = [...team.players, { id: playerId, name: playerName }];
-
-                await db.from('teams').update({ players: newPlayers }).eq('id', teamId);
-                state.teams = state.teams.map(t => t.id === teamId ? { ...t, players: newPlayers } : t);
-                render();
-
-                // Create user account
-                const baseUsername = playerName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                let username = baseUsername;
-                let counter = 1;
-                while (state.users.find(u => u.username === username)) {
-                    username = baseUsername + counter++;
-                }
-
-                const defaultPassword = 'pool' + Math.floor(Math.random() * 1000);
-                const phone = prompt(`Enter phone number for ${playerName}:`);
-
-                if (!phone || phone.length < 10) {
-                    alert('Player added but no user account created (phone required).');
-                    return;
-                }
-
-                const { data: userData } = await db.from('users').insert([{
-                    username, password: defaultPassword, phone: phone.trim(),
-                    role: 'captain', team_id: teamId, player_id: playerId,
-                    created_by: state.currentUser.id
+                if (orgError) throw orgError;
+                
+                // 2. Create admin user
+                const { data: userData, error: userError } = await db.from('users').insert([{
+                    username: adminEmail,
+                    password: adminPassword,
+                    phone: cleanPhone,
+                    role: 'admin',
+                    org_id: orgData.id
                 }]).select().single();
-
-                state.users = [...state.users, {
-                    id: userData.id, username: userData.username, password: userData.password,
-                    phone: userData.phone, role: userData.role, teamId: userData.team_id,
-                    playerId: userData.player_id
-                }];
-
-                alert(`Player added!\n\nUsername: ${username}\nPassword: ${defaultPassword}`);
-                render();
-            } catch (error) {
-                console.error('Error adding player:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function removePlayer(teamId, playerId) {
-            const team = state.teams.find(t => t.id === teamId);
-            const player = team.players.find(p => p.id === playerId);
-            if (!confirm(`Remove ${player.name}?`)) return;
-
-            showLoading();
-            try {
-                const newPlayers = team.players.filter(p => p.id !== playerId);
-                await db.from('teams').update({ players: newPlayers }).eq('id', teamId);
-                state.teams = state.teams.map(t => t.id === teamId ? { ...t, players: newPlayers } : t);
-
-                const playerUser = state.users.find(u => u.playerId === playerId);
-                if (playerUser && confirm(`Also delete user account?`)) {
-                    await db.from('users').delete().eq('id', playerUser.id);
-                    state.users = state.users.filter(u => u.id !== playerUser.id);
-                }
-                render();
-            } catch (error) {
-                console.error('Error removing player:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // SCHEDULE FUNCTIONS
-        // ============================================
-        async function generateSchedule(startDate) {
-            if (!startDate) { alert('Please select a start date'); return; }
-            if (state.teams.length < 2) { alert('Need at least 2 teams'); return; }
-            if (!state.currentSeason) { alert('Please create a season first'); return; }
-            if (!state.organization?.id) { alert('No organization loaded'); return; }
-
-            showLoading();
-            try {
-                const seasonId = state.currentSeason.id;
-                const orgId = state.organization.id;
                 
-                // Clear existing data for this season only
-                await db.from('matches').delete().eq('season_id', seasonId);
-                await db.from('submissions').delete().eq('season_id', seasonId);
-                await db.from('schedule').delete().eq('season_id', seasonId);
-
-                const numTeams = state.teams.length;
-                const weeksPerHalf = numTeams % 2 === 1 ? numTeams : numTeams - 1;
-                const schedule = generateRoundRobinSchedule(startDate, weeksPerHalf);
-
-                const dbSchedule = schedule.map(s => ({
-                    week: s.week, date: s.date, home_team_id: s.homeTeamId,
-                    away_team_id: s.awayTeamId, venue: s.venue, is_bye: s.isBye,
-                    half: s.half, is_position_night: s.isPositionNight,
-                    position_home: s.positionHome, position_away: s.positionAway,
-                    season_id: seasonId,
-                    org_id: orgId
-                }));
-
-                const { data } = await db.from('schedule').insert(dbSchedule).select();
-
-                state.schedule = data.map(s => ({
-                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
-                    awayTeamId: s.away_team_id, venue: s.venue, isBye: s.is_bye,
-                    half: s.half, isPositionNight: s.is_position_night,
-                    positionHome: s.position_home, positionAway: s.position_away,
-                    seasonId: s.season_id, orgId: s.org_id
-                }));
-
-                state.matches = [];
-                state.submissions = [];
-                state.showGenSchedule = false;
-
-                alert('Schedule generated! ' + (weeksPerHalf * 2 + 2) + ' weeks created.');
-                render();
-            } catch (error) {
-                console.error('Error generating schedule:', error);
-                alert('Error generating schedule');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function generateRoundRobinSchedule(startDate, weeksPerHalf) {
-            const teams = [...state.teams];
-            const numTeams = teams.length;
-            const newSchedule = [];
-            let currentDate = new Date(startDate);
-
-            // For circle method, we need even number of slots
-            // Add BYE placeholder only if odd number of teams
-            const teamList = numTeams % 2 === 1 
-                ? [...teams, { id: 'BYE_PLACEHOLDER', name: 'BYE', venue: 'BYE WEEK' }]
-                : [...teams];
-            
-            const n = teamList.length;
-            const rounds = n - 1;
-            const firstHalfHomeAway = {};
-
-            for (let half = 1; half <= 2; half++) {
-                const rotating = [...teamList];
-
-                for (let round = 0; round < rounds; round++) {
-                    const weekNum = half === 1 ? round + 1 : weeksPerHalf + 2 + round;
-                    const weekMatches = [];
-
-                    for (let i = 0; i < n / 2; i++) {
-                        const team1 = rotating[i];
-                        const team2 = rotating[n - 1 - i];
-
-                        // Skip if same team (should not happen but safeguard)
-                        if (team1.id === team2.id) continue;
-                        
-                        if (team1.id === 'BYE_PLACEHOLDER' && team2.id === 'BYE_PLACEHOLDER') continue;
-
-                        if (team1.id === 'BYE_PLACEHOLDER') {
-                            weekMatches.push({ week: weekNum.toString(), date: currentDate.toISOString().split('T')[0], homeTeamId: team2.id, awayTeamId: 'BYE', venue: 'BYE WEEK', isBye: true, half, isPositionNight: false });
-                            continue;
-                        }
-
-                        if (team2.id === 'BYE_PLACEHOLDER') {
-                            weekMatches.push({ week: weekNum.toString(), date: currentDate.toISOString().split('T')[0], homeTeamId: team1.id, awayTeamId: 'BYE', venue: 'BYE WEEK', isBye: true, half, isPositionNight: false });
-                            continue;
-                        }
-
-                        let home, away;
-                        const matchKey = [team1.id, team2.id].sort().join('-');
-
-                        if (half === 1) {
-                            home = (round + i) % 2 === 0 ? team1 : team2;
-                            away = home === team1 ? team2 : team1;
-                            firstHalfHomeAway[matchKey] = home.id;
-                        } else {
-                            home = firstHalfHomeAway[matchKey] === team1.id ? team2 : team1;
-                            away = home === team1 ? team2 : team1;
-                        }
-
-                        weekMatches.push({ home, away, matchKey });
-                    }
-
-                    const resolved = resolveVenueConflicts(weekMatches, weekNum, currentDate, half, firstHalfHomeAway);
-                    newSchedule.push(...resolved);
-                    currentDate.setDate(currentDate.getDate() + 7);
-
-                    const last = rotating.pop();
-                    rotating.splice(1, 0, last);
-                }
-
-                // Position Night
-                const posWeek = half === 1 ? weeksPerHalf + 1 : (weeksPerHalf * 2) + 2;
-                for (let pos = 0; pos < Math.floor(numTeams / 2); pos++) {
-                    newSchedule.push({
-                        week: posWeek.toString(), date: currentDate.toISOString().split('T')[0],
-                        homeTeamId: `POSITION_${pos * 2 + 1}`, awayTeamId: `POSITION_${pos * 2 + 2}`,
-                        venue: 'TBD - Based on Standings', isBye: false, half,
-                        isPositionNight: true, positionHome: pos * 2 + 1, positionAway: pos * 2 + 2
-                    });
-                }
-
-                if (numTeams % 2 === 1) {
-                    newSchedule.push({
-                        week: posWeek.toString(), date: currentDate.toISOString().split('T')[0],
-                        homeTeamId: `POSITION_${numTeams}`, awayTeamId: 'BYE',
-                        venue: 'BYE WEEK', isBye: true, half, isPositionNight: true, positionHome: numTeams
-                    });
-                }
-
-                currentDate.setDate(currentDate.getDate() + 7);
-            }
-
-            return newSchedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
-        }
-
-        function resolveVenueConflicts(weekMatches, weekNum, currentDate, half, firstHalfHomeAway) {
-            const resolved = [];
-            const venuesUsed = new Set();
-
-            weekMatches.filter(m => m.isBye).forEach(m => resolved.push(m));
-
-            for (const match of weekMatches.filter(m => !m.isBye && m.home)) {
-                let { home, away, matchKey } = match;
-                const homeVenue = (home.venue || '').toLowerCase().trim();
-                const awayVenue = (away.venue || '').toLowerCase().trim();
-
-                if (homeVenue && homeVenue !== 'tbd' && venuesUsed.has(homeVenue)) {
-                    if (!awayVenue || awayVenue === 'tbd' || !venuesUsed.has(awayVenue)) {
-                        [home, away] = [away, home];
-                        if (half === 1) firstHalfHomeAway[matchKey] = home.id;
-                    }
-                }
-
-                const finalVenue = (home.venue || '').toLowerCase().trim();
-                if (finalVenue && finalVenue !== 'tbd') venuesUsed.add(finalVenue);
-
-                resolved.push({
-                    week: weekNum.toString(), date: currentDate.toISOString().split('T')[0],
-                    homeTeamId: home.id, awayTeamId: away.id, venue: home.venue || 'TBD',
-                    isBye: false, half, isPositionNight: false
-                });
-            }
-
-            return resolved;
-        }
-
-        async function deleteScheduleMatch(matchId) {
-            if (!confirm('Delete this match?')) return;
-            showLoading();
-            try {
-                await db.from('matches').delete().eq('schedule_id', matchId);
-                await db.from('submissions').delete().eq('schedule_id', matchId);
-                await db.from('schedule').delete().eq('id', matchId);
-                state.schedule = state.schedule.filter(m => m.id !== matchId);
-                state.submissions = state.submissions.filter(s => s.scheduleId !== matchId);
-                state.matches = state.matches.filter(m => m.scheduleId !== matchId);
-                render();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // SCORE SUBMISSION
-        // ============================================
-        async function submitScores() {
-            const sel = state.selectedMatch;
-            const team = state.selectedTeam;
-            const matchups = state.matchups;
-            const seasonId = state.currentSeason?.id;
-
-            if (!sel || !team) { alert('Select match and team'); return; }
-
-            for (let i = 0; i < matchups.length; i++) {
-                const m = matchups[i];
-                const hg = parseInt(m.homeGames) || 0;
-                const ag = parseInt(m.awayGames) || 0;
-                if (!m.homePlayer || !m.awayPlayer) { alert(`Game ${i + 1}: Select both players`); return; }
-                if (!((hg === 2 && ag <= 1) || (ag === 2 && hg <= 1))) {
-                    alert(`Game ${i + 1}: One player must win 2, other 0 or 1`); return;
-                }
-            }
-
-            const homeScore = matchups.filter(m => parseInt(m.homeGames) > parseInt(m.awayGames)).length;
-            const awayScore = matchups.filter(m => parseInt(m.awayGames) > parseInt(m.homeGames)).length;
-
-            if (state.submissions.find(s => s.scheduleId === sel && s.teamId === team)) {
-                alert('Your team already submitted'); return;
-            }
-            
-            if (!state.organization?.id) { alert('No organization loaded'); return; }
-            const orgId = state.organization.id;
-
-            showLoading();
-            try {
-                const { data: subData } = await db.from('submissions').insert([{
-                    schedule_id: sel, team_id: team, home_score: homeScore,
-                    away_score: awayScore, matchups: matchups.map(m => ({ ...m })),
-                    season_id: seasonId,
-                    org_id: orgId
-                }]).select().single();
-
-                const newSub = {
-                    id: subData.id, scheduleId: subData.schedule_id, teamId: subData.team_id,
-                    homeScore: subData.home_score, awayScore: subData.away_score,
-                    matchups: subData.matchups, timestamp: subData.created_at,
-                    seasonId: subData.season_id, orgId: subData.org_id
-                };
-
-                state.submissions = [...state.submissions, newSub];
-
-                const otherSub = state.submissions.find(s => s.scheduleId === sel && s.teamId !== team);
-
-                if (otherSub) {
-                    if (homeScore === otherSub.homeScore && awayScore === otherSub.awayScore) {
-                        const { data: matchData } = await db.from('matches').insert([{
-                            schedule_id: sel, home_score: homeScore, away_score: awayScore,
-                            matchups: newSub.matchups, approved: true,
-                            season_id: seasonId,
-                            org_id: orgId
-                        }]).select().single();
-
-                        state.matches = [...state.matches, {
-                            id: matchData.id, scheduleId: matchData.schedule_id,
-                            homeScore: matchData.home_score, awayScore: matchData.away_score,
-                            matchups: matchData.matchups, approved: true,
-                            seasonId: matchData.season_id, orgId: matchData.org_id
-                        }];
-
-                        await db.from('submissions').delete().eq('schedule_id', sel);
-                        state.submissions = state.submissions.filter(s => s.scheduleId !== sel);
-                        alert('Scores match! Approved.');
-                    } else {
-                        alert('Conflict detected. Needs admin review.');
-                    }
-                } else {
-                    alert('Submitted! Waiting for other team.');
-                }
-
-                state.selectedMatch = '';
-                state.selectedTeam = '';
-                state.matchups = Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' }));
-                render();
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error submitting scores');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // HELPER FUNCTIONS
-        // ============================================
-        function getOrdinal(n) {
-            const s = ['th', 'st', 'nd', 'rd'];
-            const v = n % 100;
-            return (s[(v - 20) % 10] || s[v] || s[0]);
-        }
-
-        function getResolvedPositionTeam(positionId, half) {
-            if (!positionId?.startsWith('POSITION_')) return null;
-            const position = parseInt(positionId.replace('POSITION_', ''));
-            const standings = calcStandingsForHalf(half);
-            return position <= standings.length ? standings[position - 1] : null;
-        }
-
-        function calcStandingsForHalf(upToHalf) {
-            const standings = state.teams.map(t => ({ id: t.id, name: t.name, venue: t.venue, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 }));
-
-            state.matches.forEach(match => {
-                const sched = state.schedule.find(s => s.id === match.scheduleId);
-                if (!sched || sched.half > upToHalf || sched.isPositionNight) return;
-
-                const hIdx = standings.findIndex(s => s.id === sched.homeTeamId);
-                const aIdx = standings.findIndex(s => s.id === sched.awayTeamId);
-                if (hIdx !== -1 && aIdx !== -1) {
-                    standings[hIdx].gamesWon += match.homeScore;
-                    standings[hIdx].gamesLost += match.awayScore;
-                    standings[aIdx].gamesWon += match.awayScore;
-                    standings[aIdx].gamesLost += match.homeScore;
-                    if (match.homeScore > match.awayScore) { standings[hIdx].wins++; standings[aIdx].losses++; }
-                    else { standings[aIdx].wins++; standings[hIdx].losses++; }
-                }
-            });
-
-            state.schedule.filter(s => s.isBye && !s.isPositionNight && s.half <= upToHalf).forEach(s => {
-                const byeDate = new Date(s.date);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                if (byeDate <= today) {
-                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                    if (idx !== -1) standings[idx].gamesWon += 5;
-                }
-            });
-
-            return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
-        }
-
-        function calcStandings() {
-            const standings = state.teams.map(t => ({ id: t.id, name: t.name, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 }));
-
-            state.matches.forEach(match => {
-                const sched = state.schedule.find(s => s.id === match.scheduleId);
-                if (!sched) return;
-
-                let homeTeamId = sched.homeTeamId, awayTeamId = sched.awayTeamId;
-                if (sched.isPositionNight) {
-                    const rh = getResolvedPositionTeam(sched.homeTeamId, sched.half);
-                    const ra = getResolvedPositionTeam(sched.awayTeamId, sched.half);
-                    if (rh) homeTeamId = rh.id;
-                    if (ra) awayTeamId = ra.id;
-                }
-
-                const hIdx = standings.findIndex(s => s.id === homeTeamId);
-                const aIdx = standings.findIndex(s => s.id === awayTeamId);
-                if (hIdx !== -1 && aIdx !== -1) {
-                    standings[hIdx].gamesWon += match.homeScore;
-                    standings[hIdx].gamesLost += match.awayScore;
-                    standings[aIdx].gamesWon += match.awayScore;
-                    standings[aIdx].gamesLost += match.homeScore;
-                    if (match.homeScore > match.awayScore) { standings[hIdx].wins++; standings[aIdx].losses++; }
-                    else { standings[aIdx].wins++; standings[hIdx].losses++; }
-                }
-            });
-
-            state.schedule.filter(s => s.isBye && !s.isPositionNight).forEach(s => {
-                const byeDate = new Date(s.date);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                if (byeDate <= today) {
-                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                    if (idx !== -1) standings[idx].gamesWon += 5;
-                }
-            });
-
-            return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
-        }
-
-        function calcPlayerStats() {
-            const stats = [];
-            state.teams.forEach(team => {
-                team.players.forEach(player => {
-                    stats.push({ id: player.id, name: player.name, team: team.name, matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 });
-                });
-            });
-
-            state.matches.forEach(match => {
-                match.matchups?.forEach(mu => {
-                    const hg = parseInt(mu.homeGames) || 0, ag = parseInt(mu.awayGames) || 0;
-                    const hp = stats.find(s => s.id === mu.homePlayer);
-                    const ap = stats.find(s => s.id === mu.awayPlayer);
-                    if (hp) { hp.gamesWon += hg; hp.gamesLost += ag; if (hg > ag) hp.matchWins++; else hp.matchLosses++; }
-                    if (ap) { ap.gamesWon += ag; ap.gamesLost += hg; if (ag > hg) ap.matchWins++; else ap.matchLosses++; }
-                });
-            });
-
-            return stats.sort((a, b) => b.matchWins - a.matchWins || b.gamesWon - a.gamesWon);
-        }
-
-        // ============================================
-        // ADMIN FUNCTIONS
-        // ============================================
-        async function approveSubmission(scheduleId, subIndex) {
-            const subs = state.submissions.filter(s => s.scheduleId === scheduleId);
-            const sub = subs[subIndex];
-
-            showLoading();
-            try {
-                const { data } = await db.from('matches').insert([{
-                    schedule_id: scheduleId, home_score: sub.homeScore,
-                    away_score: sub.awayScore, matchups: sub.matchups, approved: true,
-                    season_id: state.currentSeason?.id,
-                    org_id: state.organization?.id
-                }]).select().single();
-
-                state.matches = [...state.matches, {
-                    id: data.id, scheduleId: data.schedule_id, homeScore: data.home_score,
-                    awayScore: data.away_score, matchups: data.matchups, approved: true,
-                    seasonId: data.season_id, orgId: data.org_id
-                }];
-
-                await db.from('submissions').delete().eq('schedule_id', scheduleId);
-                state.submissions = state.submissions.filter(s => s.scheduleId !== scheduleId);
-                alert('Approved!');
-                render();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function rejectBoth(scheduleId) {
-            if (!confirm('Reject both?')) return;
-            showLoading();
-            try {
-                await db.from('submissions').delete().eq('schedule_id', scheduleId);
-                state.submissions = state.submissions.filter(s => s.scheduleId !== scheduleId);
-                alert('Rejected. Teams can resubmit.');
-                render();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        async function clearAllData() {
-            if (!confirm('Clear ALL data?')) return;
-            if (!confirm('Are you SURE?')) return;
-
-            showLoading();
-            try {
-                await db.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('submissions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('schedule').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('teams').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                localStorage.removeItem('plm_session');
-                location.reload();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // ============================================
-        // RENDER FUNCTIONS
-        // ============================================
-        function renderLoginScreen() {
-            // Check if this is first-time setup (no organization loaded)
-            const showSetup = !state.organization && state.initialized;
-            
-            return `
-                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border-4 border-emerald-700">
-                        <div class="text-center mb-8">
-                            <div class="text-6xl mb-4">🏆</div>
-                            <h1 class="text-4xl font-black text-slate-800 mb-2">Pool League</h1>
-                            <p class="text-slate-600">Sign In</p>
-                            <p class="text-xs text-emerald-600 mt-2">☁️ Cloud-Synced</p>
-                        </div>
-                        
-                        <!-- Login Form -->
-                        <div id="login-form" class="space-y-4">
-                            <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
-                            <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
-                                Sign In
-                            </button>
-                            <button onclick="showResetForm()" class="w-full text-sm text-emerald-600 hover:text-emerald-800 py-2">
-                                Forgot Password?
-                            </button>
-                        </div>
-                        
-                        <!-- Reset Password Form (hidden by default) -->
-                        <div id="reset-form" class="space-y-4 hidden">
-                            <p class="text-sm text-slate-600 text-center mb-4">Enter your username and phone number to reset your password.</p>
-                            <input type="text" id="reset-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <input type="tel" id="reset-phone" placeholder="Phone number on file" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <button onclick="handleSelfReset()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-lg hover:from-yellow-600 hover:to-orange-600">
-                                🔑 Reset Password
-                            </button>
-                            <button onclick="showLoginForm()" class="w-full text-sm text-slate-600 hover:text-slate-800 py-2">
-                                ← Back to Login
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderHeader() {
-            return `
-                <header class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 text-white shadow-2xl">
-                    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-                        <div>
-                            <h1 class="text-2xl md:text-4xl font-black">🏆 ${state.leagueName}</h1>
-                            ${state.seasons.length > 0 ? `
-                            <div class="flex items-center gap-2 mt-1">
-                                <select onchange="switchSeason(this.value)" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-0">
-                                    ${state.seasons.map(s => `
-                                        <option value="${s.id}" ${state.currentSeason?.id === s.id ? 'selected' : ''} class="text-gray-800">
-                                            ${s.name}${s.isActive ? ' ★' : ''}
-                                        </option>
-                                    `).join('')}
-                                </select>
-                                ${state.currentSeason?.isActive ? '<span class="text-xs bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold">Active</span>' : '<span class="text-xs bg-white/30 px-2 py-0.5 rounded-full">Archived</span>'}
-                            </div>
-                            ` : ''}
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <div class="text-right text-sm">
-                                <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.username}</div>
-                            </div>
-                            <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
-                        </div>
-                    </div>
-                </header>
-            `;
-        }
-
-        function renderNav() {
-            const isAdmin = state.currentUser.role === 'admin';
-            const isCaptain = state.currentUser.role === 'captain';
-            const isPlayer = state.currentUser.role === 'player';
-            
-            // Players: view-only access to schedule, standings, history, their team
-            // Captains: can submit scores, manage their team roster
-            // Admins: full access
-            const tabs = [
-                { id: 'schedule', label: '📅 Schedule' },
-                ...(!isPlayer ? [{ id: 'submit', label: '📝 Submit' }] : []),
-                { id: 'standings', label: '🏆 Standings' },
-                { id: 'players', label: '👤 Players' },
-                { id: 'history', label: '📜 History' },
-                { id: 'teams', label: '🏠 Teams' },
-                ...(!isPlayer ? [{ id: 'users', label: '👥 Users' }] : []),
-                ...(isAdmin ? [{ id: 'admin', label: '🛡️ Admin' }, { id: 'settings', label: '⚙️ Settings' }] : [])
-            ];
-
-            return `
-                <nav class="bg-white shadow-md border-b-2 border-emerald-100">
-                    <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto tab-scroll">
-                        ${tabs.map(tab => `
-                            <button onclick="window.state.activeTab='${tab.id}'; window.render();"
-                                class="px-4 py-3 font-semibold transition-all border-b-4 whitespace-nowrap text-sm ${
-                                    state.activeTab === tab.id
-                                        ? 'text-emerald-700 border-emerald-700 bg-emerald-50'
-                                        : 'text-gray-600 border-transparent hover:text-emerald-600'
-                                }">
-                                ${tab.label}
-                            </button>
-                        `).join('')}
-                    </div>
-                </nav>
-            `;
-        }
-
-        function renderSchedule() {
-            const isAdmin = state.currentUser.role === 'admin';
-            const completedMatches = state.matches.length;
-            const totalMatches = state.schedule.filter(s => !s.isBye).length;
-            
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">📅 League Schedule</h2>
-                        <p class="mt-1 opacity-90">Manage seasons and view match schedules</p>
-                    </div>
-
-                    <!-- Season Management Section -->
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-xl font-bold flex items-center gap-2">
-                                📆 Seasons
-                                <span class="text-sm font-normal text-slate-500">(${state.seasons.length} total)</span>
-                            </h3>
-                            ${isAdmin ? `
-                            <button onclick="window.state.showManageSeasons = !window.state.showManageSeasons; window.render();" 
-                                class="text-sm text-emerald-600 hover:text-emerald-800 font-semibold">
-                                ${state.showManageSeasons ? '▼ Hide' : '▶ Manage'}
-                            </button>
-                            ` : ''}
-                        </div>
-                        
-                        <!-- Current Season Display -->
-                        ${state.currentSeason ? `
-                        <div class="flex items-center gap-4 p-4 bg-emerald-50 rounded-lg border-2 border-emerald-200">
-                            <div class="text-3xl">🏆</div>
-                            <div class="flex-1">
-                                <div class="font-bold text-lg text-emerald-800">${state.currentSeason.name}</div>
-                                <div class="text-sm text-emerald-600">
-                                    ${state.currentSeason.isActive ? '★ Active Season' : 'Archived'} 
-                                    • ${completedMatches}/${totalMatches} matches complete
-                                </div>
-                            </div>
-                            <select onchange="switchSeason(this.value)" class="px-3 py-2 border-2 border-emerald-300 rounded-lg bg-white text-sm">
-                                ${state.seasons.map(s => `
-                                    <option value="${s.id}" ${state.currentSeason?.id === s.id ? 'selected' : ''}>
-                                        ${s.name}${s.isActive ? ' ★' : ''}
-                                    </option>
-                                `).join('')}
-                            </select>
-                        </div>
-                        ` : `
-                        <div class="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200 text-center">
-                            <p class="text-yellow-800">No seasons created yet. ${isAdmin ? 'Create one below to get started!' : 'Contact admin to create a season.'}</p>
-                        </div>
-                        `}
-                        
-                        <!-- Season Management (Admin Only) -->
-                        ${isAdmin && state.showManageSeasons ? `
-                        <div class="mt-4 border-t pt-4">
-                            <h4 class="font-semibold mb-3">All Seasons</h4>
-                            <div class="space-y-2 max-h-48 overflow-y-auto">
-                                ${state.seasons.length === 0 ? `
-                                    <p class="text-slate-500 text-sm">No seasons yet</p>
-                                ` : state.seasons.map(s => {
-                                    const seasonMatches = state.schedule.filter(sch => sch.seasonId === s.id && !sch.isBye).length;
-                                    return `
-                                    <div class="flex items-center justify-between p-3 rounded-lg ${s.id === state.currentSeason?.id ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}">
-                                        <div class="flex items-center gap-3">
-                                            <span class="text-lg">${s.isActive ? '🏆' : '📁'}</span>
-                                            <div>
-                                                <div class="font-semibold">${s.name}</div>
-                                                <div class="text-xs text-slate-500">
-                                                    ${s.isActive ? '★ Active' : 'Archived'}
-                                                    ${s.id === state.currentSeason?.id ? ' • Currently Viewing' : ''}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            ${!s.isActive ? `
-                                                <button onclick="setActiveSeason('${s.id}')" class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs hover:bg-emerald-200">
-                                                    Set Active
-                                                </button>
-                                            ` : ''}
-                                            <button onclick="confirmDeleteSeason('${s.id}', '${s.name.replace(/'/g, "\\'")}')" 
-                                                class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                                                ${state.seasons.length <= 1 ? 'disabled title="Cannot delete only season"' : ''}>
-                                                🗑️
-                                            </button>
-                                        </div>
-                                    </div>
-                                `}).join('')}
-                            </div>
-                        </div>
-                        ` : ''}
-                    </div>
-
-                    <!-- Schedule Table -->
-                    ${state.schedule.length === 0 ? `
-                        <div class="bg-white rounded-xl shadow-lg p-12 text-center">
-                            <div class="text-6xl mb-4">📅</div>
-                            <h3 class="text-2xl font-bold text-slate-800 mb-2">No Schedule Yet</h3>
-                            <p class="text-slate-600">${isAdmin ? 'Use the generator below to create a schedule' : 'Check back later for the schedule'}</p>
-                        </div>
-                    ` : `
-                        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                            <div class="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
-                                <h3 class="font-bold">${state.currentSeason?.name || 'Schedule'}</h3>
-                                <div class="text-sm text-slate-600">
-                                    ${state.schedule.filter(s => !s.isBye && !s.isPositionNight).length} matches 
-                                    • ${[...new Set(state.schedule.map(s => s.week))].length} weeks
-                                </div>
-                            </div>
-                            <div class="overflow-x-auto">
-                                <table class="w-full">
-                                    <thead class="bg-slate-100">
-                                        <tr>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Week</th>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Half</th>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Date</th>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Matchup</th>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Venue</th>
-                                            <th class="px-4 py-3 text-left text-sm font-bold">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y">
-                                        ${state.schedule.map(match => {
-                                            let matchupDisplay, venueDisplay;
-
-                                            if (match.isPositionNight) {
-                                                const rh = getResolvedPositionTeam(match.homeTeamId, match.half);
-                                                const ra = getResolvedPositionTeam(match.awayTeamId, match.half);
-                                                if (match.isBye) {
-                                                    matchupDisplay = `<span class="text-purple-600">🏖️ ${rh?.name || match.positionHome + getOrdinal(match.positionHome) + ' Place'} - BYE</span>`;
-                                                    venueDisplay = '-';
-                                                } else if (rh && ra) {
-                                                    matchupDisplay = `<span class="text-purple-700 font-bold">🏆 #${match.positionAway} ${ra.name} @ #${match.positionHome} ${rh.name}</span>`;
-                                                    venueDisplay = rh.venue || 'TBD';
-                                                } else {
-                                                    matchupDisplay = `<span class="text-purple-500 italic">🏆 ${match.positionAway}${getOrdinal(match.positionAway)} @ ${match.positionHome}${getOrdinal(match.positionHome)}</span>`;
-                                                    venueDisplay = 'TBD';
-                                                }
-                                            } else {
-                                                const home = state.teams.find(t => t.id === match.homeTeamId);
-                                                const away = state.teams.find(t => t.id === match.awayTeamId);
-                                                if (match.isBye) {
-                                                    matchupDisplay = `<span class="text-blue-600">🏖️ ${home?.name || '?'} - BYE</span>`;
-                                                    venueDisplay = '-';
-                                                } else {
-                                                    matchupDisplay = `${away?.name || '?'} @ ${home?.name || '?'}`;
-                                                    venueDisplay = match.venue || 'TBD';
-                                                }
-                                            }
-
-                                            const result = state.matches.find(m => m.scheduleId === match.id);
-                                            const subs = state.submissions.filter(s => s.scheduleId === match.id);
-
-                                            let status = '<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Pending</span>';
-                                            if (match.isBye) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">BYE</span>';
-                                            else if (result) status = `<span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">${result.awayScore}-${result.homeScore}</span>`;
-                                            else if (subs.length === 2) status = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">⚠️ Conflict</span>';
-                                            else if (subs.length === 1) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">1/2</span>';
-
-                                            const halfDisplay = match.isPositionNight
-                                                ? '<span class="px-2 py-1 bg-purple-200 text-purple-900 rounded text-xs font-bold">Position</span>'
-                                                : `<span class="px-2 py-1 ${match.half === 1 ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'} rounded text-xs">${match.half === 1 ? '1st' : '2nd'}</span>`;
-
-                                            const rowClass = match.isPositionNight ? 'bg-purple-50' : (match.isBye ? 'bg-blue-50' : '');
-
-                                            return `
-                                                <tr class="${rowClass} hover:bg-slate-50">
-                                                    <td class="px-4 py-3 font-bold">${match.week}</td>
-                                                    <td class="px-4 py-3">${halfDisplay}</td>
-                                                    <td class="px-4 py-3">${match.date}</td>
-                                                    <td class="px-4 py-3">${matchupDisplay}</td>
-                                                    <td class="px-4 py-3 text-slate-600">${venueDisplay}</td>
-                                                    <td class="px-4 py-3">${status}</td>
-                                                </tr>
-                                            `;
-                                        }).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    `}
-
-                    <!-- Schedule Generator (Admin Only - At Bottom) -->
-                    ${isAdmin ? `
-                    <div class="bg-white rounded-xl shadow-lg p-6 border-2 border-dashed border-slate-300">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-xl font-bold flex items-center gap-2">
-                                ➕ Create New Season
-                            </h3>
-                            <button onclick="window.state.showGenSchedule = !window.state.showGenSchedule; window.render();" 
-                                class="px-4 py-2 ${state.showGenSchedule ? 'bg-slate-200 text-slate-700' : 'bg-emerald-600 text-white'} font-semibold rounded-lg">
-                                ${state.showGenSchedule ? '✕ Cancel' : '🔄 Generate New Schedule'}
-                            </button>
-                        </div>
-                        
-                        ${state.showGenSchedule ? `
-                        <div class="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                            <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4">
-                                <p class="text-yellow-800 text-sm font-semibold">⚠️ This will create a NEW season</p>
-                                <p class="text-yellow-700 text-xs mt-1">Your current season "${state.currentSeason?.name || 'N/A'}" will be preserved and archived.</p>
-                            </div>
-                            
-                            <div class="grid md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label class="block text-sm font-semibold text-slate-700 mb-1">Season Name</label>
-                                    <input type="text" id="new-season-name-gen" placeholder="e.g., Spring 2025" 
-                                        class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-semibold text-slate-700 mb-1">Start Date</label>
-                                    <input type="date" id="gen-start-date" class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
-                                </div>
-                            </div>
-                            
-                            <div class="bg-white p-3 rounded-lg border mb-4">
-                                <h4 class="font-semibold text-sm mb-2">Schedule Rules:</h4>
-                                <ul class="text-xs text-slate-600 space-y-1">
-                                    <li>✓ Round-robin: Each team plays every other team twice (home & away)</li>
-                                    <li>✓ ${state.teams.length} teams × 2 halves + 2 Position Nights = ${state.teams.length * 2 + 2} weeks</li>
-                                    <li>✓ Each team gets 1 bye per half</li>
-                                    <li>✓ Position Nights match teams by standings (1st vs 2nd, etc.)</li>
-                                </ul>
-                            </div>
-                            
-                            <button onclick="generateNewSeasonSchedule()" 
-                                class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
-                                🚀 Create Season & Generate Schedule
-                            </button>
-                        </div>
-                        ` : `
-                        <p class="text-slate-500 text-sm">Create a new season with an auto-generated schedule. Your current season will be preserved.</p>
-                        `}
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-        }
-
-        function renderSubmitScores() {
-            const availMatches = state.schedule.filter(m => {
-                if (m.isBye || state.matches.find(x => x.scheduleId === m.id)) return false;
-                if (m.isPositionNight) {
-                    return getResolvedPositionTeam(m.homeTeamId, m.half) && getResolvedPositionTeam(m.awayTeamId, m.half);
-                }
-                return true;
-            });
-
-            const match = state.schedule.find(m => m.id === state.selectedMatch);
-            let home = null, away = null;
-            if (match) {
-                if (match.isPositionNight) {
-                    home = getResolvedPositionTeam(match.homeTeamId, match.half);
-                    away = getResolvedPositionTeam(match.awayTeamId, match.half);
-                } else {
-                    home = state.teams.find(t => t.id === match.homeTeamId);
-                    away = state.teams.find(t => t.id === match.awayTeamId);
-                }
-            }
-
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">📝 Submit Scores</h2>
-                    </div>
-
-                    <!-- Scan Scoresheet Section -->
-                    <div class="bg-white rounded-xl shadow-lg p-6 border-2 border-blue-200">
-                        <h3 class="text-lg font-bold mb-3">📷 Scan Scoresheet</h3>
-                        <p class="text-sm text-slate-600 mb-4">Take a photo of your completed scoresheet to auto-fill the form.</p>
-                        <div class="flex gap-3 flex-wrap">
-                            <label class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 cursor-pointer">
-                                📷 Upload Photo
-                                <input type="file" accept="image/*" capture="environment" onchange="handleScoresheetUpload(this)" class="hidden">
-                            </label>
-                            <label class="px-6 py-3 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 cursor-pointer">
-                                📁 Choose File
-                                <input type="file" accept="image/*" onchange="handleScoresheetUpload(this)" class="hidden">
-                            </label>
-                        </div>
-                        ${ocrStatus ? `<p class="mt-3 text-blue-600 font-semibold">${ocrStatus}</p>` : ''}
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <h3 class="text-lg font-bold mb-4">Or Enter Manually</h3>
-                        <div class="grid md:grid-cols-2 gap-4 mb-6">
-                            <div>
-                                <label class="block text-sm font-bold mb-2">Select Match</label>
-                                <select onchange="state.selectedMatch = this.value; window.render();" class="w-full px-4 py-3 border-2 rounded-lg">
-                                    <option value="">Choose match...</option>
-                                    ${availMatches.map(m => {
-                                        let text;
-                                        if (m.isPositionNight) {
-                                            const h = getResolvedPositionTeam(m.homeTeamId, m.half);
-                                            const a = getResolvedPositionTeam(m.awayTeamId, m.half);
-                                            text = `Week ${m.week}: ${a?.name} @ ${h?.name}`;
-                                        } else {
-                                            const h = state.teams.find(t => t.id === m.homeTeamId);
-                                            const a = state.teams.find(t => t.id === m.awayTeamId);
-                                            text = `Week ${m.week}: ${a?.name} @ ${h?.name}`;
-                                        }
-                                        return `<option value="${m.id}" ${state.selectedMatch === m.id ? 'selected' : ''}>${text}</option>`;
-                                    }).join('')}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold mb-2">Your Team</label>
-                                <select onchange="state.selectedTeam = this.value; window.render();" class="w-full px-4 py-3 border-2 rounded-lg">
-                                    <option value="">Select team...</option>
-                                    ${state.teams.map(t => `<option value="${t.id}" ${state.selectedTeam === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                                </select>
-                            </div>
-                        </div>
-
-                        ${match && home && away ? `
-                            <div class="bg-emerald-50 p-4 rounded-lg border mb-6">
-                                <h3 class="font-bold text-emerald-800">${away.name} @ ${home.name}</h3>
-                            </div>
-
-                            ${state.matchups.map((m, i) => `
-                                <div class="border rounded-lg p-4 mb-4 bg-slate-50">
-                                    <h4 class="font-bold mb-3">Game ${i + 1}</h4>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
-                                            <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select...</option>
-                                                ${home.players.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                                            </select>
-                                            <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
-                                            <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select...</option>
-                                                ${away.players.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                                            </select>
-                                            <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
-                                        </div>
-                                    </div>
-                                </div>
-                            `).join('')}
-
-                            <button onclick="submitScores()" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-lg">Submit Scores</button>
-                        ` : `<div class="text-center py-12 text-slate-500 border-2 border-dashed rounded-lg">Select a match and your team</div>`}
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderStandings() {
-            const standings = calcStandings();
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">🏆 Standings</h2>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-emerald-600 text-white">
-                                <tr>
-                                    <th class="px-4 py-3 text-left">#</th>
-                                    <th class="px-4 py-3 text-left">Team</th>
-                                    <th class="px-4 py-3 text-center">W</th>
-                                    <th class="px-4 py-3 text-center">L</th>
-                                    <th class="px-4 py-3 text-center">GW</th>
-                                    <th class="px-4 py-3 text-center">GL</th>
-                                    <th class="px-4 py-3 text-center">%</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y">
-                                ${standings.map((t, i) => {
-                                    const total = t.wins + t.losses;
-                                    const pct = total > 0 ? ((t.wins / total) * 100).toFixed(1) : '0.0';
-                                    return `
-                                        <tr class="hover:bg-emerald-50">
-                                            <td class="px-4 py-3 font-black text-emerald-600">${i + 1}</td>
-                                            <td class="px-4 py-3 font-bold">${t.name}</td>
-                                            <td class="px-4 py-3 text-center">${t.wins}</td>
-                                            <td class="px-4 py-3 text-center">${t.losses}</td>
-                                            <td class="px-4 py-3 text-center">${t.gamesWon}</td>
-                                            <td class="px-4 py-3 text-center">${t.gamesLost}</td>
-                                            <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderPlayerStats() {
-            const stats = calcPlayerStats();
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">👤 Player Stats</h2>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-slate-100">
-                                <tr>
-                                    <th class="px-4 py-3 text-left">Player</th>
-                                    <th class="px-4 py-3 text-left">Team</th>
-                                    <th class="px-4 py-3 text-center">MW</th>
-                                    <th class="px-4 py-3 text-center">ML</th>
-                                    <th class="px-4 py-3 text-center">GW</th>
-                                    <th class="px-4 py-3 text-center">GL</th>
-                                    <th class="px-4 py-3 text-center">%</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y">
-                                ${stats.map(p => {
-                                    const total = p.matchWins + p.matchLosses;
-                                    const pct = total > 0 ? ((p.matchWins / total) * 100).toFixed(1) : '0.0';
-                                    return `
-                                        <tr class="hover:bg-slate-50">
-                                            <td class="px-4 py-3 font-semibold">${p.name}</td>
-                                            <td class="px-4 py-3 text-slate-600">${p.team}</td>
-                                            <td class="px-4 py-3 text-center">${p.matchWins}</td>
-                                            <td class="px-4 py-3 text-center">${p.matchLosses}</td>
-                                            <td class="px-4 py-3 text-center">${p.gamesWon}</td>
-                                            <td class="px-4 py-3 text-center">${p.gamesLost}</td>
-                                            <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderHistory() {
-            const completed = state.schedule.filter(s => !s.isBye && state.matches.find(m => m.scheduleId === s.id)).sort((a, b) => new Date(b.date) - new Date(a.date));
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">📜 History</h2>
-                    </div>
-                    ${completed.length === 0 ? '<div class="bg-white rounded-xl shadow-lg p-12 text-center text-slate-600">No completed matches</div>' : completed.map(sched => {
-                        const match = state.matches.find(m => m.scheduleId === sched.id);
-                        const home = state.teams.find(t => t.id === sched.homeTeamId);
-                        const away = state.teams.find(t => t.id === sched.awayTeamId);
-                        return `
-                            <div class="bg-white rounded-xl shadow-lg p-6">
-                                <div class="flex justify-between items-center">
-                                    <div>
-                                        <h3 class="text-xl font-bold">${away?.name} @ ${home?.name}</h3>
-                                        <p class="text-slate-600">Week ${sched.week} • ${sched.date}</p>
-                                    </div>
-                                    <div class="text-3xl font-black text-emerald-700">${match.awayScore} - ${match.homeScore}</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        }
-
-        function renderTeams() {
-            const isAdmin = state.currentUser.role === 'admin';
-            const isCaptain = state.currentUser.role === 'captain';
-            const isPlayer = state.currentUser.role === 'player';
-            const myTeamId = state.currentUser.teamId;
-
-            // Get captains not already assigned to a team
-            const assignedCaptains = state.teams.map(t => t.captain).filter(c => c);
-            const availableCaptains = state.users.filter(u => 
-                u.role === 'captain' && !assignedCaptains.includes(u.username)
-            );
-            
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">🏠 Teams</h2>
-                        ${isPlayer ? '<p class="opacity-90 mt-1">View team information</p>' : ''}
-                    </div>
-
-                    ${isAdmin ? `
-                    <!-- Venue Management Section -->
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="window.state.showManageVenues = !window.state.showManageVenues; window.render();" class="w-full bg-slate-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2">
-                            📍 Manage Venues ${state.showManageVenues ? '▲' : '▼'}
-                        </button>
-                        ${state.showManageVenues ? `
-                        <div class="mt-4 border-t pt-4">
-                            <div class="space-y-2 mb-4 p-4 bg-slate-50 rounded-lg">
-                                <input type="text" id="new-venue-name" placeholder="Venue name *" class="w-full px-4 py-2 border-2 rounded-lg">
-                                <input type="text" id="new-venue-address" placeholder="Address" class="w-full px-4 py-2 border-2 rounded-lg">
-                                <input type="tel" id="new-venue-phone" placeholder="Phone number" class="w-full px-4 py-2 border-2 rounded-lg">
-                                <button onclick="handleAddVenue()" class="w-full px-6 py-2 bg-blue-600 text-white font-bold rounded-lg">Add Venue</button>
-                            </div>
-                            ${state.venues.length === 0 ? 
-                                '<p class="text-slate-500 text-center py-4">No venues defined yet</p>' :
-                                '<div class="space-y-2">' + state.venues.map(v => {
-                                    const venue = typeof v === 'string' ? { name: v, address: '', phone: '' } : v;
-                                    const phoneClean = venue.phone ? venue.phone.replace(/[^0-9+]/g, '') : '';
-                                    const addressEncoded = venue.address ? encodeURIComponent(venue.address) : '';
-                                    return `
-                                    <div class="bg-slate-50 p-3 rounded border">
-                                        <div class="flex justify-between items-start">
-                                            <div>
-                                                <div class="font-bold">📍 ${venue.name}</div>
-                                                ${venue.address ? '<a href="https://maps.google.com/?q=' + addressEncoded + '" target="_blank" class="text-sm text-blue-600 hover:underline block">🏠 ' + venue.address + '</a>' : ''}
-                                                ${venue.phone ? '<a href="tel:' + phoneClean + '" class="text-sm text-blue-600 hover:underline block">📞 ' + venue.phone + '</a>' : ''}
-                                            </div>
-                                            <button onclick="deleteVenue('${venue.name.replace(/'/g, "\\'")}')" class="text-red-600 text-sm">❌</button>
-                                        </div>
-                                    </div>
-                                `}).join('') + '</div>'
-                            }
-                        </div>
-                        ` : ''}
-                    </div>
-
-                    <!-- Create Team Section -->
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="window.state.showCreateTeam = !window.state.showCreateTeam; window.render();" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ Create Team</button>
-                        ${state.showCreateTeam ? `
-                        <div class="mt-4 space-y-3 border-t pt-4">
-                            <div>
-                                <label class="block text-sm font-bold mb-1">Team Name *</label>
-                                <input type="text" id="team-name" placeholder="Enter team name" class="w-full px-4 py-2 border-2 rounded-lg">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold mb-1">Home Venue</label>
-                                <select id="team-venue" class="w-full px-4 py-2 border-2 rounded-lg">
-                                    <option value="">Select venue...</option>
-                                    ${state.venues.map(v => {
-                                        const venue = typeof v === 'string' ? { name: v } : v;
-                                        return '<option value="' + venue.name + '">' + venue.name + '</option>';
-                                    }).join('')}
-                                </select>
-                                ${state.venues.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ Add venues above first</p>' : ''}
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold mb-1">Captain</label>
-                                <select id="team-captain" class="w-full px-4 py-2 border-2 rounded-lg">
-                                    <option value="">Select captain...</option>
-                                    ${availableCaptains.map(c => `<option value="${c.username}">${c.username}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
-                                </select>
-                                ${availableCaptains.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ No available captains (create users or unassign existing)</p>' : ''}
-                            </div>
-                            <button onclick="handleCreateTeam()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create Team</button>
-                        </div>
-                        ` : ''}
-                    </div>
-                    ` : ''}
-
-                    ${state.teams.map(team => {
-                        // Players can view but not edit, even their own team
-                        const canEdit = isAdmin || (isCaptain && myTeamId === team.id);
-                        const venueData = state.venues.find(v => (typeof v === 'string' ? v : v.name) === team.venue);
-                        const venueObj = venueData ? (typeof venueData === 'string' ? { name: venueData } : venueData) : null;
-                        const venuePhone = venueObj && venueObj.phone ? venueObj.phone.replace(/[^0-9+]/g, '') : '';
-                        const venueAddress = venueObj && venueObj.address ? encodeURIComponent(venueObj.address) : '';
-                        
-                        return `
-                        <div class="bg-white rounded-xl shadow-lg p-6 ${myTeamId === team.id ? 'border-2 border-emerald-400' : ''}">
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 class="text-2xl font-bold">${team.name} ${myTeamId === team.id ? '<span class="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">Your Team</span>' : ''}</h3>
-                                    <div class="text-slate-600">
-                                        <span>📍 ${team.venue || 'No venue'}</span>
-                                        ${venueObj && venueObj.address ? ' <a href="https://maps.google.com/?q=' + venueAddress + '" target="_blank" class="text-blue-600 hover:underline">(Map)</a>' : ''}
-                                        ${venueObj && venueObj.phone ? ' <a href="tel:' + venuePhone + '" class="text-blue-600 hover:underline">(Call)</a>' : ''}
-                                        <span> • 👤 ${team.captain || 'No captain'}</span>
-                                    </div>
-                                </div>
-                                ${isAdmin ? `<button onclick="deleteTeam('${team.id}')" class="text-red-600">❌</button>` : ''}
-                            </div>
-                            <div class="border-t pt-4">
-                                <h4 class="font-bold mb-2">Players (${team.players.length})</h4>
-                                <div class="grid sm:grid-cols-2 gap-2 mb-4">
-                                    ${team.players.map(p => `
-                                        <div class="flex justify-between items-center bg-slate-50 p-2 rounded border">
-                                            <span>${p.name}</span>
-                                            ${canEdit ? `<button onclick="removePlayer('${team.id}', '${p.id}')" class="text-red-600 text-sm">❌</button>` : ''}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                                ${canEdit ? `
-                                <div class="flex gap-2">
-                                    <input type="text" id="player-${team.id}" placeholder="New player" class="flex-1 px-3 py-2 border rounded">
-                                    <button onclick="handleAddPlayer('${team.id}')" class="px-4 py-2 bg-blue-600 text-white rounded font-bold">Add</button>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `}).join('')}
-                </div>
-            `;
-        }
-
-        function renderUsers() {
-            const isAdmin = state.currentUser.role === 'admin';
-            const isCaptain = state.currentUser.role === 'captain';
-            const myTeamId = state.currentUser.teamId;
-            
-            // Captains only see users on their team, admins see all
-            const visibleUsers = isAdmin 
-                ? state.users 
-                : state.users.filter(u => u.teamId === myTeamId || u.id === state.currentUser.id);
-            
-            const myTeam = state.teams.find(t => t.id === myTeamId);
-            const canCreateUsers = isAdmin || isCaptain;
-            
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">👥 ${isCaptain ? 'Team Members' : 'Users'}</h2>
-                        ${isCaptain && myTeam ? '<p class="opacity-90 mt-1">' + myTeam.name + '</p>' : ''}
-                    </div>
-
-                    ${canCreateUsers ? `
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
-                        <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
-                            <input type="text" id="new-username" placeholder="Username" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
-                            ${isAdmin ? `
-                                <select id="new-user-role" class="w-full px-4 py-2 border-2 rounded-lg">
-                                    <option value="player">Player (view only)</option>
-                                    <option value="captain">Captain (can submit scores)</option>
-                                    <option value="admin">Admin (full access)</option>
-                                </select>
-                                <select id="new-user-team" class="w-full px-4 py-2 border-2 rounded-lg">
-                                    <option value="">No team</option>
-                                    ${state.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
-                                </select>
-                            ` : `<p class="text-xs text-slate-500">New member will be added to your team as a player</p>`}
-                            <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <div class="bg-white rounded-xl shadow-lg divide-y">
-                        ${visibleUsers.length === 0 ? '<p class="p-6 text-slate-500 text-center">No team members found</p>' : ''}
-                        ${visibleUsers.map(user => {
-                            const team = state.teams.find(t => t.id === user.teamId);
-                            const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
-                            return `
-                            <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
-                                <div class="text-3xl">${roleIcon}</div>
-                                <div class="flex-1">
-                                    <div class="font-bold">${user.username} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
-                                    <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
-                                    ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
-                                </div>
-                                ${isAdmin && user.id !== state.currentUser.id ? `
-                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
-                                    <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
-                                        <option value="">No team</option>
-                                        ${state.teams.map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                                    </select>
-                                    <button onclick="deleteUser('${user.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
-                                ` : ''}
-                                ${isCaptain && user.id !== state.currentUser.id ? `
-                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
-                                ` : ''}
-                            </div>
-                        `}).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderAdmin() {
-            const conflicts = [];
-            const grouped = {};
-            state.submissions.forEach(s => {
-                if (!grouped[s.scheduleId]) grouped[s.scheduleId] = [];
-                grouped[s.scheduleId].push(s);
-            });
-            Object.entries(grouped).forEach(([schedId, subs]) => {
-                if (subs.length === 2 && (subs[0].homeScore !== subs[1].homeScore || subs[0].awayScore !== subs[1].awayScore)) {
-                    conflicts.push({ scheduleId: schedId, submissions: subs });
-                }
-            });
-
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">🛡️ Admin</h2>
-                    </div>
-
-                    <div class="grid md:grid-cols-3 gap-4">
-                        <div class="bg-white rounded-xl shadow-lg p-6 text-center">
-                            <div class="text-4xl font-black text-blue-600">${state.users.length}</div>
-                            <div class="text-slate-600">Users</div>
-                        </div>
-                        <div class="bg-white rounded-xl shadow-lg p-6 text-center">
-                            <div class="text-4xl font-black text-emerald-600">${state.teams.length}</div>
-                            <div class="text-slate-600">Teams</div>
-                        </div>
-                        <div class="bg-white rounded-xl shadow-lg p-6 text-center">
-                            <div class="text-4xl font-black text-purple-600">${state.matches.length}</div>
-                            <div class="text-slate-600">Matches</div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <h3 class="text-xl font-bold mb-4">⚠️ Conflicts (${conflicts.length})</h3>
-                        ${conflicts.length === 0 ? '<p class="text-slate-600">No conflicts</p>' : conflicts.map(c => {
-                            const sched = state.schedule.find(s => s.id === c.scheduleId);
-                            const home = state.teams.find(t => t.id === sched?.homeTeamId);
-                            const away = state.teams.find(t => t.id === sched?.awayTeamId);
-                            return `
-                                <div class="border-2 border-red-200 rounded-lg p-4 mb-4 bg-red-50">
-                                    <h4 class="font-bold">Week ${sched?.week}: ${away?.name} @ ${home?.name}</h4>
-                                    <div class="grid grid-cols-2 gap-4 mt-2">
-                                        ${c.submissions.map((sub, i) => {
-                                            const team = state.teams.find(t => t.id === sub.teamId);
-                                            return `
-                                                <div class="bg-white p-3 rounded border">
-                                                    <div class="font-semibold">${team?.name}:</div>
-                                                    <div class="text-2xl font-bold">${sub.awayScore} - ${sub.homeScore}</div>
-                                                    <button onclick="approveSubmission('${c.scheduleId}', ${i})" class="mt-2 px-3 py-1 bg-emerald-600 text-white rounded text-sm">Approve</button>
-                                                </div>
-                                            `;
-                                        }).join('')}
-                                    </div>
-                                    <button onclick="rejectBoth('${c.scheduleId}')" class="mt-3 px-4 py-2 bg-red-600 text-white rounded w-full">Reject Both</button>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="clearAllData()" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg">🗑️ Clear All Data</button>
-                    </div>
-                </div>
-            `;
-        }
-
-        // ============================================
-        // PDF SCORESHEET GENERATION
-        // ============================================
-        function generateScoresheetPDF(numSheets = 2) {
-            // Uses jsPDF library loaded dynamically
-            if (!window.jspdf) {
-                alert('PDF library loading... please try again in a moment.');
-                return;
-            }
-            
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('portrait', 'pt', 'letter');
-            const width = doc.internal.pageSize.getWidth();
-            const height = doc.internal.pageSize.getHeight();
-            const halfHeight = height / 2;
-            
-            const leagueName = state.leagueName;
-            
-            // Colors
-            const green = [16, 185, 129];
-            const dark = [30, 41, 59];
-            const lightGray = [241, 245, 249];
-            
-            function drawScoresheet(yOffset) {
-                // Header
-                doc.setFillColor(...green);
-                doc.rect(0, yOffset, width, 35, 'F');
-                
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text(leagueName, width / 2, yOffset + 23, { align: 'center' });
-                
-                // Date & Teams
-                let y = yOffset + 55;
-                doc.setTextColor(...dark);
-                doc.setFontSize(8);
-                doc.setFont('helvetica', 'normal');
-                doc.text('Date: _________', 30, y);
-                
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'bold');
-                doc.text('HOME:', 140, y);
-                doc.setLineWidth(0.5);
-                doc.line(180, y + 2, 300, y + 2);
-                
-                doc.text('AWAY:', 340, y);
-                doc.line(380, y + 2, 500, y + 2);
-                
-                // Games table header
-                y = yOffset + 85;
-                doc.setFontSize(8);
-                doc.text('#', 32, y);
-                doc.text('HOME PLAYER', 115, y, { align: 'center' });
-                doc.text('AWAY PLAYER', 325, y, { align: 'center' });
-                
-                y += 5;
-                doc.setDrawColor(...green);
-                doc.setLineWidth(1.5);
-                doc.line(25, y, width - 25, y);
-                
-                y += 8;
-                
-                // Game rows
-                const boxSize = 14;
-                const rowHeight = 28;
-                
-                for (let game = 1; game <= 5; game++) {
-                    // Alternating background
-                    if (game % 2 === 1) {
-                        doc.setFillColor(...lightGray);
-                        doc.rect(25, y - 5, width - 50, rowHeight, 'F');
-                    }
-                    
-                    // Game number
-                    doc.setTextColor(...green);
-                    doc.setFontSize(12);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text(String(game), 35, y + 12);
-                    
-                    // Home player line
-                    doc.setDrawColor(...dark);
-                    doc.setLineWidth(0.5);
-                    doc.line(50, y + 15, 155, y + 15);
-                    
-                    // Home boxes
-                    doc.setLineWidth(1);
-                    doc.rect(165, y + 1, boxSize, boxSize);
-                    doc.rect(165 + boxSize + 4, y + 1, boxSize, boxSize);
-                    
-                    // Away player line
-                    doc.setLineWidth(0.5);
-                    doc.line(260, y + 15, 365, y + 15);
-                    
-                    // Away boxes
-                    doc.setLineWidth(1);
-                    doc.rect(375, y + 1, boxSize, boxSize);
-                    doc.rect(375 + boxSize + 4, y + 1, boxSize, boxSize);
-                    
-                    y += rowHeight;
+                if (userError) {
+                    // Rollback: delete the org if user creation fails
+                    await db.from('organizations').delete().eq('id', orgData.id);
+                    throw userError;
                 }
                 
-                // Footer
-                doc.setTextColor(150, 150, 150);
-                doc.setFontSize(6);
-                doc.setFont('helvetica', 'normal');
-                doc.text('Mark X for each game won. First to 2 wins the match.', width / 2, yOffset + halfHeight - 10, { align: 'center' });
-            }
-            
-            // Generate pages with 2 scoresheets each
-            const pagesNeeded = Math.ceil(numSheets / 2);
-            
-            for (let page = 0; page < pagesNeeded; page++) {
-                if (page > 0) doc.addPage();
+                // 3. Update organization with owner_id
+                await db.from('organizations').update({ owner_id: userData.id }).eq('id', orgData.id);
                 
-                // Top scoresheet
-                drawScoresheet(0);
+                // 4. Create default league settings
+                await db.from('league_settings').insert([{
+                    name: leagueName,
+                    org_id: orgData.id,
+                    venues: []
+                }]);
                 
-                // Dashed cut line
-                doc.setDrawColor(150, 150, 150);
-                doc.setLineWidth(0.5);
-                doc.setLineDashPattern([6, 3], 0);
-                doc.line(20, halfHeight, width - 20, halfHeight);
-                doc.setLineDashPattern([], 0);
-                
-                // Bottom scoresheet (if needed)
-                if ((page * 2) + 1 < numSheets) {
-                    drawScoresheet(halfHeight);
-                }
-            }
-            
-            doc.save(`${leagueName.replace(/[^a-z0-9]/gi, '_')}_Scoresheets.pdf`);
-        }
-        
-        window.printScoresheet = function(count) {
-            generateScoresheetPDF(count);
-        };
-
-        // ============================================
-        // OCR SCORESHEET SCANNING
-        // ============================================
-        let ocrProgress = 0;
-        let ocrStatus = '';
-        
-        async function scanScoresheet(file) {
-            if (!file) return;
-            
-            showLoading();
-            ocrStatus = 'Initializing OCR...';
-            render();
-            
-            try {
-                const worker = await Tesseract.createWorker('eng', 1, {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            ocrProgress = Math.round(m.progress * 100);
-                            ocrStatus = `Reading scoresheet... ${ocrProgress}%`;
-                        }
-                    }
-                });
-                
-                ocrStatus = 'Reading scoresheet...';
-                const { data: { text } } = await worker.recognize(file);
-                await worker.terminate();
-                
-                console.log('OCR Raw Text:', text);
-                
-                // Parse the scoresheet
-                const result = parseScoresheetText(text);
-                console.log('Parsed Result:', result);
-                
-                if (result.success) {
-                    // Try to match teams
-                    const homeTeam = findTeamByName(result.homeTeam);
-                    const awayTeam = findTeamByName(result.awayTeam);
-                    
-                    if (homeTeam && awayTeam) {
-                        // Find the matching scheduled match
-                        const scheduledMatch = state.schedule.find(m => 
-                            !m.isBye && 
-                            m.homeTeamId === homeTeam.id && 
-                            m.awayTeamId === awayTeam.id &&
-                            !window.state.matches.find(x => x.scheduleId === m.id)
-                        );
-                        
-                        if (scheduledMatch) {
-                            state.selectedMatch = scheduledMatch.id;
-                        }
-                        
-                        // Match players and fill in scores
-                        for (let i = 0; i < 5; i++) {
-                            if (result.games[i]) {
-                                const game = result.games[i];
-                                
-                                // Find home player
-                                const homePlayer = findPlayerByName(homeTeam, game.homePlayer);
-                                if (homePlayer) {
-                                    state.matchups[i].homePlayer = homePlayer.id;
-                                }
-                                state.matchups[i].homeGames = game.homeWins.toString();
-                                
-                                // Find away player
-                                const awayPlayer = findPlayerByName(awayTeam, game.awayPlayer);
-                                if (awayPlayer) {
-                                    state.matchups[i].awayPlayer = awayPlayer.id;
-                                }
-                                state.matchups[i].awayGames = game.awayWins.toString();
-                            }
-                        }
-                        
-                        alert(`Scoresheet scanned!\n\nHome: ${homeTeam.name}\nAway: ${awayTeam.name}\n\nPlease review and correct any errors before submitting.`);
-                    } else {
-                        alert(`Could not match teams.\n\nRead: "${result.homeTeam}" vs "${result.awayTeam}"\n\nPlease select the match manually and review the player names.`);
-                    }
-                } else {
-                    alert('Could not read scoresheet clearly. Please try again with a clearer photo, or enter scores manually.');
-                }
-                
-            } catch (error) {
-                console.error('OCR Error:', error);
-                alert('Error scanning scoresheet. Please try again or enter scores manually.');
-            } finally {
-                hideLoading();
-                ocrStatus = '';
-                ocrProgress = 0;
-                render();
-            }
-        }
-        
-        function parseScoresheetText(text) {
-            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            console.log('Lines:', lines);
-            
-            const result = {
-                success: false,
-                homeTeam: '',
-                awayTeam: '',
-                games: []
-            };
-            
-            // Look for HOME: and AWAY: patterns
-            for (const line of lines) {
-                const homeMatch = line.match(/HOME[:\s]+([A-Za-z0-9\s']+?)(?=\s*AWAY|$)/i);
-                const awayMatch = line.match(/AWAY[:\s]+([A-Za-z0-9\s']+?)$/i);
-                
-                if (homeMatch) result.homeTeam = homeMatch[1].trim();
-                if (awayMatch) result.awayTeam = awayMatch[1].trim();
-            }
-            
-            // Also try to find teams on separate lines
-            if (!result.homeTeam || !result.awayTeam) {
-                for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].match(/^HOME/i) && lines[i+1]) {
-                        result.homeTeam = result.homeTeam || lines[i].replace(/^HOME[:\s]*/i, '').trim();
-                    }
-                    if (lines[i].match(/^AWAY/i)) {
-                        result.awayTeam = result.awayTeam || lines[i].replace(/^AWAY[:\s]*/i, '').trim();
-                    }
-                }
-            }
-            
-            // Parse game rows - look for patterns like "1 PlayerName XX PlayerName XX"
-            // where X can be a mark or empty
-            for (let gameNum = 1; gameNum <= 5; gameNum++) {
-                const game = {
-                    homePlayer: '',
-                    homeWins: 0,
-                    awayPlayer: '',
-                    awayWins: 0
-                };
-                
-                // Find line starting with game number
-                for (const line of lines) {
-                    if (line.match(new RegExp(`^${gameNum}\\s`))) {
-                        // Try to parse: "1 Name [X][X] Name [X][X]"
-                        // This is tricky because OCR might read X marks differently
-                        
-                        const parts = line.substring(1).trim();
-                        
-                        // Count X marks or similar characters that indicate wins
-                        const xMarks = (parts.match(/[xX✓✗☑☒]/g) || []).length;
-                        
-                        // Try to extract player names (words before/after the X marks)
-                        const words = parts.split(/\s+/).filter(w => !w.match(/^[xX✓✗☑☒\[\]]+$/));
-                        
-                        // Heuristic: first half of words = home player, second half = away player
-                        if (words.length >= 2) {
-                            const midpoint = Math.floor(words.length / 2);
-                            game.homePlayer = words.slice(0, midpoint).join(' ');
-                            game.awayPlayer = words.slice(midpoint).join(' ');
-                        }
-                        
-                        // Count wins based on X position (this is approximate)
-                        // We'll look for patterns of marks
-                        const homeSection = parts.substring(0, parts.length / 2);
-                        const awaySection = parts.substring(parts.length / 2);
-                        
-                        game.homeWins = (homeSection.match(/[xX✓☑]/g) || []).length;
-                        game.awayWins = (awaySection.match(/[xX✓☑]/g) || []).length;
-                        
-                        // Normalize to valid scores (0, 1, or 2)
-                        game.homeWins = Math.min(2, game.homeWins);
-                        game.awayWins = Math.min(2, game.awayWins);
-                        
-                        break;
-                    }
-                }
-                
-                result.games.push(game);
-            }
-            
-            result.success = !!(result.homeTeam || result.awayTeam || result.games.some(g => g.homePlayer || g.awayPlayer));
-            
-            return result;
-        }
-        
-        function findTeamByName(name) {
-            if (!name) return null;
-            const searchName = name.toLowerCase().trim();
-            
-            // Exact match
-            let team = state.teams.find(t => t.name.toLowerCase() === searchName);
-            if (team) return team;
-            
-            // Partial match
-            team = state.teams.find(t => 
-                t.name.toLowerCase().includes(searchName) || 
-                searchName.includes(t.name.toLowerCase())
-            );
-            if (team) return team;
-            
-            // Fuzzy match - check if most words match
-            const searchWords = searchName.split(/\s+/);
-            for (const t of state.teams) {
-                const teamWords = t.name.toLowerCase().split(/\s+/);
-                const matches = searchWords.filter(sw => 
-                    teamWords.some(tw => tw.includes(sw) || sw.includes(tw))
-                );
-                if (matches.length >= Math.min(searchWords.length, teamWords.length) * 0.5) {
-                    return t;
-                }
-            }
-            
-            return null;
-        }
-        
-        function findPlayerByName(team, name) {
-            if (!team || !name) return null;
-            const searchName = name.toLowerCase().trim();
-            
-            // Exact match
-            let player = team.players.find(p => p.name.toLowerCase() === searchName);
-            if (player) return player;
-            
-            // Partial match
-            player = team.players.find(p => 
-                p.name.toLowerCase().includes(searchName) || 
-                searchName.includes(p.name.toLowerCase())
-            );
-            if (player) return player;
-            
-            // First/last name match
-            const searchParts = searchName.split(/\s+/);
-            for (const p of team.players) {
-                const playerParts = p.name.toLowerCase().split(/\s+/);
-                if (searchParts.some(sp => playerParts.some(pp => pp === sp || pp.startsWith(sp) || sp.startsWith(pp)))) {
-                    return p;
-                }
-            }
-            
-            return null;
-        }
-        
-        window.handleScoresheetUpload = function(input) {
-            if (input.files && input.files[0]) {
-                scanScoresheet(input.files[0]);
-            }
-        };
-
-        function renderSettings() {
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">⚙️ Settings</h2>
-                    </div>
-                    
-                    <!-- Season Management -->
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="window.state.showManageSeasons = !window.state.showManageSeasons; window.render();" class="w-full bg-purple-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2">
-                            📅 Manage Seasons ${state.showManageSeasons ? '▲' : '▼'}
-                        </button>
-                        ${state.showManageSeasons ? `
-                        <div class="mt-4 border-t pt-4">
-                            <div class="flex gap-2 mb-4">
-                                <input type="text" id="new-season-name" placeholder="New season name (e.g., Fall 2025)" class="flex-1 px-4 py-2 border-2 rounded-lg">
-                                <button onclick="handleCreateSeason()" class="px-6 py-2 bg-purple-600 text-white font-bold rounded-lg">Create</button>
-                            </div>
-                            ${state.seasons.length === 0 ? 
-                                '<p class="text-slate-500 text-center py-4">No seasons yet. Create one to get started!</p>' :
-                                '<div class="space-y-2">' + state.seasons.map(s => `
-                                    <div class="flex justify-between items-center p-3 rounded border ${s.isActive ? 'bg-yellow-50 border-yellow-300' : 'bg-slate-50'}">
-                                        <div>
-                                            <span class="font-bold">${s.name}</span>
-                                            ${s.isActive ? '<span class="ml-2 text-xs bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full">Active</span>' : ''}
-                                        </div>
-                                        <div class="flex gap-2">
-                                            ${!s.isActive ? `<button onclick="setActiveSeason('${s.id}')" class="text-xs px-3 py-1 bg-green-600 text-white rounded">Set Active</button>` : ''}
-                                            <button onclick="deleteSeason('${s.id}')" class="text-red-600 text-sm">❌</button>
-                                        </div>
-                                    </div>
-                                `).join('') + '</div>'
-                            }
-                            <p class="text-xs text-slate-500 mt-4">💡 The active season is the default for new schedules and scores. You can view historical seasons by selecting them in the header dropdown.</p>
-                        </div>
-                        ` : ''}
-                    </div>
-                    
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <label class="block text-sm font-bold mb-2">League Name</label>
-                        <input type="text" id="league-name" value="${state.leagueName}" class="w-full px-4 py-2 border-2 rounded-lg mb-4">
-                        <button onclick="handleSaveSettings()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">Save</button>
-                    </div>
-                    
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <h3 class="text-lg font-bold mb-4">📄 Print Scoresheets</h3>
-                        <p class="text-sm text-slate-600 mb-4">Generate printable scoresheets with your league name. Half-page size (2 per sheet).</p>
-                        <div class="flex gap-3 flex-wrap">
-                            <button onclick="printScoresheet(2)" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">
-                                1 Page (2 sheets)
-                            </button>
-                            <button onclick="printScoresheet(10)" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">
-                                5 Pages (10 sheets)
-                            </button>
-                            <button onclick="printScoresheet(20)" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">
-                                10 Pages (20 sheets)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // ============================================
-        // EVENT HANDLERS (attach to window for onclick)
-        // ============================================
-        window.handleLogin = async function() {
-            const username = document.getElementById('login-username').value;
-            const password = document.getElementById('login-password').value;
-
-            if (!username || !password) {
-                document.getElementById('login-error').textContent = 'Please enter username and password';
-                document.getElementById('login-error').classList.remove('hidden');
-                return;
-            }
-
-            if (!await login(username, password)) {
-                document.getElementById('login-error').textContent = 'Invalid credentials';
-                document.getElementById('login-error').classList.remove('hidden');
-            }
-        };
-
-        window.handleCreateUser = async function() {
-            const username = document.getElementById('new-username').value;
-            const password = document.getElementById('new-password').value;
-            const phone = document.getElementById('new-phone').value;
-            
-            // Admins can pick role and team, captains create players for their team
-            const roleSelect = document.getElementById('new-user-role');
-            const teamSelect = document.getElementById('new-user-team');
-            
-            let role = null;
-            let teamId = null;
-            
-            if (roleSelect && teamSelect) {
-                // Admin - use selected role and team
-                role = roleSelect.value || 'player';
-                teamId = teamSelect.value || null;
-            } else if (state.currentUser.role === 'captain') {
-                // Captain - create player for their team
-                role = 'player';
-                teamId = state.currentUser.teamId;
-            }
-            
-            if (await createAccount(username, password, phone, role, teamId)) {
-                document.getElementById('new-username').value = '';
-                document.getElementById('new-password').value = '';
-                document.getElementById('new-phone').value = '';
-                if (roleSelect) roleSelect.value = 'player';
-                if (teamSelect) teamSelect.value = '';
-                document.getElementById('create-user-form').classList.add('hidden');
-            }
-        };
-
-        window.handleCreateTeam = async function() {
-            await createTeam(
-                document.getElementById('team-name').value,
-                document.getElementById('team-venue').value,
-                document.getElementById('team-captain').value
-            );
-        };
-
-        window.handleAddVenue = async function() {
-            const nameInput = document.getElementById('new-venue-name');
-            const addressInput = document.getElementById('new-venue-address');
-            const phoneInput = document.getElementById('new-venue-phone');
-            if (await addVenue(nameInput.value, addressInput.value, phoneInput.value)) {
-                nameInput.value = '';
-                addressInput.value = '';
-                phoneInput.value = '';
-            }
-        };
-
-        window.handleAddPlayer = async function(teamId) {
-            const input = document.getElementById('player-' + teamId);
-            if (input.value.trim()) {
-                await addPlayer(teamId, input.value);
-                input.value = '';
-            }
-        };
-
-        window.handleSaveSettings = async function() {
-            await saveLeagueName(document.getElementById('league-name').value);
-            alert('Saved!');
-        };
-
-        // Password reset handlers
-        window.resetPassword = resetPassword;
-        
-        window.showResetForm = function() {
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('reset-form').classList.remove('hidden');
-        };
-        
-        window.showLoginForm = function() {
-            document.getElementById('reset-form').classList.add('hidden');
-            document.getElementById('login-form').classList.remove('hidden');
-        };
-        
-        window.handleSelfReset = async function() {
-            const username = document.getElementById('reset-username').value;
-            const phone = document.getElementById('reset-phone').value;
-            if (await selfServiceReset(username, phone)) {
-                document.getElementById('reset-username').value = '';
-                document.getElementById('reset-phone').value = '';
-                showLoginForm();
-            }
-        };
-
-        window.handleCreateSeason = async function() {
-            const input = document.getElementById('new-season-name');
-            if (await createSeason(input.value)) {
-                input.value = '';
-            }
-        };
-
-        window.switchSeason = switchSeason;
-        window.setActiveSeason = setActiveSeason;
-        window.deleteSeason = deleteSeason;
-        window.createSeason = createSeason;
-        window.confirmDeleteSeason = confirmDeleteSeason;
-        window.generateNewSeasonSchedule = generateNewSeasonSchedule;
-
-        // ============================================
-        // MAIN RENDER
-        // ============================================
-        function render() {
-            if (!window.state.initialized) {
-                document.getElementById('app').innerHTML = `
-                    <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center">
-                        <div class="text-center text-white">
-                            <div class="spinner mx-auto mb-4"></div>
-                            <p class="text-xl">Loading...</p>
-                        </div>
-                    </div>
+                // Success!
+                successDiv.innerHTML = `
+                    <strong>🎉 Welcome to Pool League Manager!</strong><br>
+                    Your league "${leagueName}" has been created.<br><br>
+                    <a href="app.html" class="text-emerald-600 font-bold underline">Click here to sign in →</a>
                 `;
-                return;
+                successDiv.classList.remove('hidden');
+                
+                // Clear form
+                document.getElementById('signup-form').reset();
+                
+            } catch (error) {
+                console.error('Signup error:', error);
+                errorDiv.textContent = error.message || 'An error occurred. Please try again.';
+                errorDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Create My League →';
             }
-
-            const app = document.getElementById('app');
-            if (!window.state.currentUser) {
-                app.innerHTML = renderLoginScreen();
-            } else {
-                const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
-                app.innerHTML = `
-                    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-                        ${renderHeader()}
-                        ${renderNav()}
-                        <main class="max-w-7xl mx-auto px-4 py-6">${tabs[state.activeTab]?.() || ''}</main>
-                    </div>
-                `;
-            }
-        }
-
-        // ============================================
-        // INIT
-        // ============================================
-        async function init() {
-            render(); // Show loading screen
-            
-            const session = localStorage.getItem('plm_session');
-            if (session) {
-                try {
-                    const { id } = JSON.parse(session);
-                    
-                    // Load user and their organization
-                    const { data: userData, error } = await db.from('users')
-                        .select('*')
-                        .eq('id', id)
-                        .single();
-                    
-                    if (userData && !error) {
-                        const user = {
-                            id: userData.id, username: userData.username, password: userData.password,
-                            phone: userData.phone, role: userData.role, teamId: userData.team_id,
-                            playerId: userData.player_id, createdAt: userData.created_at,
-                            createdBy: userData.created_by, orgId: userData.org_id
-                        };
-                        
-                        // Load organization
-                        if (user.orgId) {
-                            const { data: org } = await db.from('organizations')
-                                .select('*')
-                                .eq('id', user.orgId)
-                                .single();
-                            
-                            if (org) {
-                                state.organization = {
-                                    id: org.id,
-                                    name: org.name,
-                                    slug: org.slug,
-                                    subscriptionStatus: org.subscription_status,
-                                    subscriptionTier: org.subscription_tier,
-                                    billingInterval: org.billing_interval,
-                                    trialEndsAt: org.trial_ends_at,
-                                    maxTeams: org.max_teams,
-                                    maxUsers: org.max_users,
-                                    maxSeasons: org.max_seasons
-                                };
-                                
-                                // Check subscription
-                                if (checkSubscriptionValid()) {
-                                    state.currentUser = user;
-                                    await loadAllData();
-                                } else {
-                                    localStorage.removeItem('plm_session');
-                                    alert('Your subscription has expired. Please contact your administrator to renew.');
-                                }
-                            }
-                        }
-                    } else {
-                        localStorage.removeItem('plm_session');
-                    }
-                } catch (e) {
-                    console.error('Session restore error:', e);
-                    localStorage.removeItem('plm_session');
-                }
-            }
-
-            // Always mark as initialized so login screen shows
-            state.initialized = true;
-            render();
-            console.log('App loaded with Supabase!');
-        }
-
-        // ============================================
-        // EXPOSE TO WINDOW (for onclick handlers)
-        // ============================================
-        window.state = state;
-        window.render = render;
-        window.logout = logout;
-        window.submitScores = submitScores;
-        window.generateSchedule = generateSchedule;
-        window.deleteScheduleMatch = deleteScheduleMatch;
-        window.deleteTeam = deleteTeam;
-        window.deleteUser = deleteUser;
-        window.assignTeam = assignTeam;
-        window.removePlayer = removePlayer;
-        window.approveSubmission = approveSubmission;
-        window.rejectBoth = rejectBoth;
-        window.clearAllData = clearAllData;
-        window.addVenue = addVenue;
-        window.deleteVenue = deleteVenue;
-
-        init();
-        } // end startApp
-        
-        // ============================================
-        // PWA SUPPORT
-        // ============================================
-        
-        // Detect if running as installed PWA
-        if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
-            document.body.classList.add('pwa-mode');
-        }
-        
-        // Show install prompt for iOS Safari
-        function showInstallPrompt() {
-            // Check if already installed or dismissed
-            if (window.navigator.standalone) return;
-            if (localStorage.getItem('pwa_install_dismissed')) return;
-            
-            // Only show on iOS Safari
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-            
-            if (isIOS && isSafari) {
-                setTimeout(() => {
-                    const banner = document.createElement('div');
-                    banner.className = 'install-banner';
-                    banner.innerHTML = `
-                        <div style="flex:1;">
-                            <div style="font-weight:bold;">Install Pool League</div>
-                            <div style="font-size:12px;opacity:0.9;">Tap Share then "Add to Home Screen"</div>
-                        </div>
-                        <button onclick="this.parentElement.remove();localStorage.setItem('pwa_install_dismissed','1');" 
-                                style="background:rgba(255,255,255,0.2);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:bold;">
-                            Got it
-                        </button>
-                    `;
-                    document.body.appendChild(banner);
-                }, 3000);
-            }
-        }
-        
-        // Show install prompt after login
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(showInstallPrompt, 5000);
         });
-        
-        // Register Service Worker for offline caching (if served over HTTPS)
-        if ('serviceWorker' in navigator && location.protocol === 'https:') {
-            // Create inline service worker
-            const swCode = `
-                const CACHE_NAME = 'pool-league-v1';
-                const OFFLINE_URLS = ['/'];
-                
-                self.addEventListener('install', (event) => {
-                    self.skipWaiting();
-                });
-                
-                self.addEventListener('activate', (event) => {
-                    event.waitUntil(clients.claim());
-                });
-                
-                self.addEventListener('fetch', (event) => {
-                    // Network-first strategy
-                    event.respondWith(
-                        fetch(event.request)
-                            .catch(() => caches.match(event.request))
-                    );
-                });
-            `;
-            
-            const swBlob = new Blob([swCode], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(swBlob);
-            
-            navigator.serviceWorker.register(swUrl).then(reg => {
-                console.log('Service Worker registered');
-            }).catch(err => {
-                console.log('Service Worker registration failed (this is normal for local files):', err);
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             });
-        }
+        });
     </script>
 </body>
 </html>
