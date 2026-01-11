@@ -138,12 +138,15 @@
             submissions: [],
             matches: [],
             venues: [],
+            seasons: [],
+            currentSeason: null,
             currentUser: null,
             activeTab: 'schedule',
             leagueName: 'Pool League',
             showCreateTeam: false,
             showGenSchedule: false,
             showManageVenues: false,
+            showManageSeasons: false,
             selectedMatch: '',
             selectedTeam: '',
             matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
@@ -164,6 +167,16 @@
                     state.venues = settings.venues || [];
                 }
 
+                // Load seasons
+                const { data: seasons } = await db.from('seasons').select('*').order('created_at', { ascending: false });
+                state.seasons = (seasons || []).map(s => ({
+                    id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
+                    isActive: s.is_active, createdAt: s.created_at
+                }));
+                
+                // Set current season to active one, or most recent
+                state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0] || null;
+
                 const { data: users, error: usersError } = await db.from('users').select('*');
                 console.log('Users:', users, usersError);
                 state.users = (users || []).map(u => ({
@@ -179,6 +192,49 @@
                     phone: t.phone || '', players: t.players || []
                 }));
 
+                // Load schedule for current season
+                await loadSeasonData();
+
+                state.initialized = true;
+                console.log('Data loaded:', { users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length, seasons: state.seasons.length });
+            } catch (error) {
+                console.error('Error loading data:', error);
+                state.initialized = true;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function loadSeasonData() {
+            const seasonId = state.currentSeason?.id;
+            
+            if (seasonId) {
+                const { data: schedule } = await db.from('schedule').select('*').eq('season_id', seasonId);
+                state.schedule = (schedule || []).map(s => ({
+                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
+                    awayTeamId: s.away_team_id, venue: s.venue || 'TBD', isBye: s.is_bye,
+                    half: s.half, isPositionNight: s.is_position_night,
+                    positionHome: s.position_home, positionAway: s.position_away,
+                    seasonId: s.season_id
+                }));
+
+                const { data: submissions } = await db.from('submissions').select('*').eq('season_id', seasonId);
+                state.submissions = (submissions || []).map(s => ({
+                    id: s.id, scheduleId: s.schedule_id, teamId: s.team_id,
+                    homeScore: s.home_score, awayScore: s.away_score,
+                    matchups: s.matchups || [], timestamp: s.created_at,
+                    seasonId: s.season_id
+                }));
+
+                const { data: matches } = await db.from('matches').select('*').eq('season_id', seasonId);
+                state.matches = (matches || []).map(m => ({
+                    id: m.id, scheduleId: m.schedule_id, homeScore: m.home_score,
+                    awayScore: m.away_score, matchups: m.matchups || [],
+                    approved: m.approved, timestamp: m.created_at,
+                    seasonId: m.season_id
+                }));
+            } else {
+                // No season - load all data (backwards compatibility)
                 const { data: schedule } = await db.from('schedule').select('*');
                 state.schedule = (schedule || []).map(s => ({
                     id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
@@ -200,14 +256,6 @@
                     awayScore: m.away_score, matchups: m.matchups || [],
                     approved: m.approved, timestamp: m.created_at
                 }));
-
-                state.initialized = true;
-                console.log('Data loaded:', { users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length });
-            } catch (error) {
-                console.error('Error loading data:', error);
-                state.initialized = true; // Still show login screen even on error
-            } finally {
-                hideLoading();
             }
         }
 
@@ -281,6 +329,136 @@
             } catch (error) {
                 console.error('Error deleting venue:', error);
                 alert('Error deleting venue');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // ============================================
+        // SEASON FUNCTIONS
+        // ============================================
+        async function createSeason(name) {
+            if (!name || !name.trim()) {
+                alert('Please enter a season name');
+                return false;
+            }
+            showLoading();
+            try {
+                // Deactivate all other seasons
+                await db.from('seasons').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+                
+                // Create new active season
+                const { data, error } = await db.from('seasons').insert([{
+                    name: name.trim(),
+                    is_active: true
+                }]).select().single();
+                
+                if (error) throw error;
+                
+                const newSeason = {
+                    id: data.id,
+                    name: data.name,
+                    startDate: data.start_date,
+                    endDate: data.end_date,
+                    isActive: data.is_active,
+                    createdAt: data.created_at
+                };
+                
+                state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
+                state.currentSeason = newSeason;
+                state.schedule = [];
+                state.matches = [];
+                state.submissions = [];
+                
+                alert('Season "' + name + '" created and set as active!');
+                render();
+                return true;
+            } catch (error) {
+                console.error('Error creating season:', error);
+                alert('Error creating season');
+                return false;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function switchSeason(seasonId) {
+            const season = state.seasons.find(s => s.id === seasonId);
+            if (!season) return;
+            
+            showLoading();
+            try {
+                state.currentSeason = season;
+                await loadSeasonData();
+                render();
+            } catch (error) {
+                console.error('Error switching season:', error);
+                alert('Error switching season');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function setActiveSeason(seasonId) {
+            showLoading();
+            try {
+                // Deactivate all seasons
+                await db.from('seasons').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+                
+                // Activate selected season
+                await db.from('seasons').update({ is_active: true }).eq('id', seasonId);
+                
+                state.seasons = state.seasons.map(s => ({
+                    ...s,
+                    isActive: s.id === seasonId
+                }));
+                
+                const season = state.seasons.find(s => s.id === seasonId);
+                state.currentSeason = season;
+                await loadSeasonData();
+                
+                alert('Season "' + season.name + '" is now active!');
+                render();
+            } catch (error) {
+                console.error('Error setting active season:', error);
+                alert('Error setting active season');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteSeason(seasonId) {
+            const season = state.seasons.find(s => s.id === seasonId);
+            if (!season) return;
+            
+            if (state.seasons.length === 1) {
+                alert('Cannot delete the only season');
+                return;
+            }
+            
+            if (!confirm('Delete season "' + season.name + '" and all its schedule/match data? This cannot be undone!')) return;
+            
+            showLoading();
+            try {
+                // Delete all data for this season
+                await db.from('matches').delete().eq('season_id', seasonId);
+                await db.from('submissions').delete().eq('season_id', seasonId);
+                await db.from('schedule').delete().eq('season_id', seasonId);
+                await db.from('seasons').delete().eq('id', seasonId);
+                
+                state.seasons = state.seasons.filter(s => s.id !== seasonId);
+                
+                // If we deleted the current season, switch to another
+                if (state.currentSeason?.id === seasonId) {
+                    state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0];
+                    await loadSeasonData();
+                }
+                
+                alert('Season deleted');
+                render();
+            } catch (error) {
+                console.error('Error deleting season:', error);
+                alert('Error deleting season');
             } finally {
                 hideLoading();
             }
@@ -510,16 +688,18 @@
         async function generateSchedule(startDate) {
             if (!startDate) { alert('Please select a start date'); return; }
             if (state.teams.length < 2) { alert('Need at least 2 teams'); return; }
+            if (!state.currentSeason) { alert('Please create a season first'); return; }
 
             showLoading();
             try {
-                // Clear existing data
-                await db.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('submissions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                await db.from('schedule').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                const seasonId = state.currentSeason.id;
+                
+                // Clear existing data for this season only
+                await db.from('matches').delete().eq('season_id', seasonId);
+                await db.from('submissions').delete().eq('season_id', seasonId);
+                await db.from('schedule').delete().eq('season_id', seasonId);
 
                 const numTeams = state.teams.length;
-                // For round-robin: if odd teams, N weeks per half; if even teams, N-1 weeks per half
                 const weeksPerHalf = numTeams % 2 === 1 ? numTeams : numTeams - 1;
                 const schedule = generateRoundRobinSchedule(startDate, weeksPerHalf);
 
@@ -527,7 +707,8 @@
                     week: s.week, date: s.date, home_team_id: s.homeTeamId,
                     away_team_id: s.awayTeamId, venue: s.venue, is_bye: s.isBye,
                     half: s.half, is_position_night: s.isPositionNight,
-                    position_home: s.positionHome, position_away: s.positionAway
+                    position_home: s.positionHome, position_away: s.positionAway,
+                    season_id: seasonId
                 }));
 
                 const { data } = await db.from('schedule').insert(dbSchedule).select();
@@ -536,7 +717,8 @@
                     id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
                     awayTeamId: s.away_team_id, venue: s.venue, isBye: s.is_bye,
                     half: s.half, isPositionNight: s.is_position_night,
-                    positionHome: s.position_home, positionAway: s.position_away
+                    positionHome: s.position_home, positionAway: s.position_away,
+                    seasonId: s.season_id
                 }));
 
                 state.matches = [];
@@ -699,6 +881,7 @@
             const sel = state.selectedMatch;
             const team = state.selectedTeam;
             const matchups = state.matchups;
+            const seasonId = state.currentSeason?.id;
 
             if (!sel || !team) { alert('Select match and team'); return; }
 
@@ -723,13 +906,15 @@
             try {
                 const { data: subData } = await db.from('submissions').insert([{
                     schedule_id: sel, team_id: team, home_score: homeScore,
-                    away_score: awayScore, matchups: matchups.map(m => ({ ...m }))
+                    away_score: awayScore, matchups: matchups.map(m => ({ ...m })),
+                    season_id: seasonId
                 }]).select().single();
 
                 const newSub = {
                     id: subData.id, scheduleId: subData.schedule_id, teamId: subData.team_id,
                     homeScore: subData.home_score, awayScore: subData.away_score,
-                    matchups: subData.matchups, timestamp: subData.created_at
+                    matchups: subData.matchups, timestamp: subData.created_at,
+                    seasonId: subData.season_id
                 };
 
                 state.submissions = [...state.submissions, newSub];
@@ -740,13 +925,15 @@
                     if (homeScore === otherSub.homeScore && awayScore === otherSub.awayScore) {
                         const { data: matchData } = await db.from('matches').insert([{
                             schedule_id: sel, home_score: homeScore, away_score: awayScore,
-                            matchups: newSub.matchups, approved: true
+                            matchups: newSub.matchups, approved: true,
+                            season_id: seasonId
                         }]).select().single();
 
                         state.matches = [...state.matches, {
                             id: matchData.id, scheduleId: matchData.schedule_id,
                             homeScore: matchData.home_score, awayScore: matchData.away_score,
-                            matchups: matchData.matchups, approved: true
+                            matchups: matchData.matchups, approved: true,
+                            seasonId: matchData.season_id
                         }];
 
                         await db.from('submissions').delete().eq('schedule_id', sel);
@@ -807,8 +994,13 @@
             });
 
             state.schedule.filter(s => s.isBye && !s.isPositionNight && s.half <= upToHalf).forEach(s => {
-                const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                if (idx !== -1) standings[idx].gamesWon += 5;
+                const byeDate = new Date(s.date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (byeDate <= today) {
+                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
+                    if (idx !== -1) standings[idx].gamesWon += 5;
+                }
             });
 
             return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
@@ -842,8 +1034,13 @@
             });
 
             state.schedule.filter(s => s.isBye && !s.isPositionNight).forEach(s => {
-                const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                if (idx !== -1) standings[idx].gamesWon += 5;
+                const byeDate = new Date(s.date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (byeDate <= today) {
+                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
+                    if (idx !== -1) standings[idx].gamesWon += 5;
+                }
             });
 
             return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
@@ -967,7 +1164,21 @@
             return `
                 <header class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 text-white shadow-2xl">
                     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-                        <h1 class="text-2xl md:text-4xl font-black">🏆 ${state.leagueName}</h1>
+                        <div>
+                            <h1 class="text-2xl md:text-4xl font-black">🏆 ${state.leagueName}</h1>
+                            ${state.seasons.length > 0 ? `
+                            <div class="flex items-center gap-2 mt-1">
+                                <select onchange="switchSeason(this.value)" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-0">
+                                    ${state.seasons.map(s => `
+                                        <option value="${s.id}" ${state.currentSeason?.id === s.id ? 'selected' : ''} class="text-gray-800">
+                                            ${s.name}${s.isActive ? ' ★' : ''}
+                                        </option>
+                                    `).join('')}
+                                </select>
+                                ${state.currentSeason?.isActive ? '<span class="text-xs bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-bold">Active</span>' : '<span class="text-xs bg-white/30 px-2 py-0.5 rounded-full">Archived</span>'}
+                            </div>
+                            ` : ''}
+                        </div>
                         <div class="flex items-center gap-3">
                             <div class="text-right text-sm">
                                 <div class="opacity-90">Logged in as</div>
@@ -1971,6 +2182,38 @@
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">⚙️ Settings</h2>
                     </div>
+                    
+                    <!-- Season Management -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <button onclick="window.state.showManageSeasons = !window.state.showManageSeasons; window.render();" class="w-full bg-purple-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2">
+                            📅 Manage Seasons ${state.showManageSeasons ? '▲' : '▼'}
+                        </button>
+                        ${state.showManageSeasons ? `
+                        <div class="mt-4 border-t pt-4">
+                            <div class="flex gap-2 mb-4">
+                                <input type="text" id="new-season-name" placeholder="New season name (e.g., Fall 2025)" class="flex-1 px-4 py-2 border-2 rounded-lg">
+                                <button onclick="handleCreateSeason()" class="px-6 py-2 bg-purple-600 text-white font-bold rounded-lg">Create</button>
+                            </div>
+                            ${state.seasons.length === 0 ? 
+                                '<p class="text-slate-500 text-center py-4">No seasons yet. Create one to get started!</p>' :
+                                '<div class="space-y-2">' + state.seasons.map(s => `
+                                    <div class="flex justify-between items-center p-3 rounded border ${s.isActive ? 'bg-yellow-50 border-yellow-300' : 'bg-slate-50'}">
+                                        <div>
+                                            <span class="font-bold">${s.name}</span>
+                                            ${s.isActive ? '<span class="ml-2 text-xs bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full">Active</span>' : ''}
+                                        </div>
+                                        <div class="flex gap-2">
+                                            ${!s.isActive ? `<button onclick="setActiveSeason('${s.id}')" class="text-xs px-3 py-1 bg-green-600 text-white rounded">Set Active</button>` : ''}
+                                            <button onclick="deleteSeason('${s.id}')" class="text-red-600 text-sm">❌</button>
+                                        </div>
+                                    </div>
+                                `).join('') + '</div>'
+                            }
+                            <p class="text-xs text-slate-500 mt-4">💡 The active season is the default for new schedules and scores. You can view historical seasons by selecting them in the header dropdown.</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <label class="block text-sm font-bold mb-2">League Name</label>
                         <input type="text" id="league-name" value="${state.leagueName}" class="w-full px-4 py-2 border-2 rounded-lg mb-4">
@@ -2058,6 +2301,18 @@
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
         };
+
+        window.handleCreateSeason = async function() {
+            const input = document.getElementById('new-season-name');
+            if (await createSeason(input.value)) {
+                input.value = '';
+            }
+        };
+
+        window.switchSeason = switchSeason;
+        window.setActiveSeason = setActiveSeason;
+        window.deleteSeason = deleteSeason;
+        window.createSeason = createSeason;
 
         // ============================================
         // MAIN RENDER
