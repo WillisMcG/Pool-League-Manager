@@ -518,7 +518,9 @@
                 await db.from('submissions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
                 await db.from('schedule').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-                const weeksPerHalf = state.teams.length;
+                const numTeams = state.teams.length;
+                // For round-robin: if odd teams, N weeks per half; if even teams, N-1 weeks per half
+                const weeksPerHalf = numTeams % 2 === 1 ? numTeams : numTeams - 1;
                 const schedule = generateRoundRobinSchedule(startDate, weeksPerHalf);
 
                 const dbSchedule = schedule.map(s => ({
@@ -541,7 +543,7 @@
                 state.submissions = [];
                 state.showGenSchedule = false;
 
-                alert(`Schedule generated! ${weeksPerHalf * 2 + 2} weeks created.`);
+                alert('Schedule generated! ' + (weeksPerHalf * 2 + 2) + ' weeks created.');
                 render();
             } catch (error) {
                 console.error('Error generating schedule:', error);
@@ -553,10 +555,16 @@
 
         function generateRoundRobinSchedule(startDate, weeksPerHalf) {
             const teams = [...state.teams];
+            const numTeams = teams.length;
             const newSchedule = [];
             let currentDate = new Date(startDate);
 
-            const teamList = [...teams, { id: 'BYE_PLACEHOLDER', name: 'BYE', venue: 'BYE WEEK' }];
+            // For circle method, we need even number of slots
+            // Add BYE placeholder only if odd number of teams
+            const teamList = numTeams % 2 === 1 
+                ? [...teams, { id: 'BYE_PLACEHOLDER', name: 'BYE', venue: 'BYE WEEK' }]
+                : [...teams];
+            
             const n = teamList.length;
             const rounds = n - 1;
             const firstHalfHomeAway = {};
@@ -572,6 +580,9 @@
                         const team1 = rotating[i];
                         const team2 = rotating[n - 1 - i];
 
+                        // Skip if same team (should not happen but safeguard)
+                        if (team1.id === team2.id) continue;
+                        
                         if (team1.id === 'BYE_PLACEHOLDER' && team2.id === 'BYE_PLACEHOLDER') continue;
 
                         if (team1.id === 'BYE_PLACEHOLDER') {
@@ -609,7 +620,7 @@
 
                 // Position Night
                 const posWeek = half === 1 ? weeksPerHalf + 1 : (weeksPerHalf * 2) + 2;
-                for (let pos = 0; pos < Math.floor(teams.length / 2); pos++) {
+                for (let pos = 0; pos < Math.floor(numTeams / 2); pos++) {
                     newSchedule.push({
                         week: posWeek.toString(), date: currentDate.toISOString().split('T')[0],
                         homeTeamId: `POSITION_${pos * 2 + 1}`, awayTeamId: `POSITION_${pos * 2 + 2}`,
@@ -618,11 +629,11 @@
                     });
                 }
 
-                if (teams.length % 2 === 1) {
+                if (numTeams % 2 === 1) {
                     newSchedule.push({
                         week: posWeek.toString(), date: currentDate.toISOString().split('T')[0],
-                        homeTeamId: `POSITION_${teams.length}`, awayTeamId: 'BYE',
-                        venue: 'BYE WEEK', isBye: true, half, isPositionNight: true, positionHome: teams.length
+                        homeTeamId: `POSITION_${numTeams}`, awayTeamId: 'BYE',
+                        venue: 'BYE WEEK', isBye: true, half, isPositionNight: true, positionHome: numTeams
                     });
                 }
 
