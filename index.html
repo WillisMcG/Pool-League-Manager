@@ -921,7 +921,7 @@
                 <nav class="bg-white shadow-md border-b-2 border-emerald-100">
                     <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto tab-scroll">
                         ${tabs.map(tab => `
-                            <button onclick="state.activeTab='${tab.id}'; render();"
+                            <button onclick="window.state.activeTab='${tab.id}'; window.render();"
                                 class="px-4 py-3 font-semibold transition-all border-b-4 whitespace-nowrap text-sm ${
                                     state.activeTab === tab.id
                                         ? 'text-emerald-700 border-emerald-700 bg-emerald-50'
@@ -945,7 +945,7 @@
 
                     ${isAdmin ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="state.showGenSchedule = !state.showGenSchedule; render();" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg">
+                        <button onclick="window.state.showGenSchedule = !window.state.showGenSchedule; window.render();" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg">
                             🔄 Auto-Generate Schedule
                         </button>
                         ${state.showGenSchedule ? `
@@ -1093,7 +1093,7 @@
                         <div class="grid md:grid-cols-2 gap-4 mb-6">
                             <div>
                                 <label class="block text-sm font-bold mb-2">Select Match</label>
-                                <select onchange="state.selectedMatch = this.value; render();" class="w-full px-4 py-3 border-2 rounded-lg">
+                                <select onchange="state.selectedMatch = this.value; window.render();" class="w-full px-4 py-3 border-2 rounded-lg">
                                     <option value="">Choose match...</option>
                                     ${availMatches.map(m => {
                                         let text;
@@ -1112,7 +1112,7 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-bold mb-2">Your Team</label>
-                                <select onchange="state.selectedTeam = this.value; render();" class="w-full px-4 py-3 border-2 rounded-lg">
+                                <select onchange="state.selectedTeam = this.value; window.render();" class="w-full px-4 py-3 border-2 rounded-lg">
                                     <option value="">Select team...</option>
                                     ${state.teams.map(t => `<option value="${t.id}" ${state.selectedTeam === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                                 </select>
@@ -1130,7 +1130,7 @@
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
                                             <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
-                                            <select onchange="state.matchups[${i}].homePlayer = this.value; render();" class="w-full px-3 py-2 border rounded">
+                                            <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
                                                 <option value="">Select...</option>
                                                 ${home.players.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                             </select>
@@ -1138,7 +1138,7 @@
                                         </div>
                                         <div>
                                             <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
-                                            <select onchange="state.matchups[${i}].awayPlayer = this.value; render();" class="w-full px-3 py-2 border rounded">
+                                            <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
                                                 <option value="">Select...</option>
                                                 ${away.players.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                             </select>
@@ -1280,7 +1280,7 @@
 
                     ${isAdmin ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="state.showCreateTeam = !state.showCreateTeam; render();" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ Create Team</button>
+                        <button onclick="window.state.showCreateTeam = !window.state.showCreateTeam; window.render();" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ Create Team</button>
                         ${state.showCreateTeam ? `
                         <div class="mt-4 space-y-3 border-t pt-4">
                             <input type="text" id="team-name" placeholder="Team Name" class="w-full px-4 py-2 border-2 rounded-lg">
@@ -1620,7 +1620,7 @@
                             !m.isBye && 
                             m.homeTeamId === homeTeam.id && 
                             m.awayTeamId === awayTeam.id &&
-                            !state.matches.find(x => x.scheduleId === m.id)
+                            !window.state.matches.find(x => x.scheduleId === m.id)
                         );
                         
                         if (scheduledMatch) {
@@ -1900,27 +1900,12 @@
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
         };
-        
-        // Expose all functions needed by onclick handlers
-        window.logout = logout;
-        window.submitScores = submitScores;
-        window.generateSchedule = generateSchedule;
-        window.deleteScheduleMatch = deleteScheduleMatch;
-        window.deleteTeam = deleteTeam;
-        window.deleteUser = deleteUser;
-        window.assignTeam = assignTeam;
-        window.removePlayer = removePlayer;
-        window.approveSubmission = approveSubmission;
-        window.rejectBoth = rejectBoth;
-        window.clearAllData = clearAllData;
-        window.render = render;
-        window.state = state;
 
         // ============================================
         // MAIN RENDER
         // ============================================
         function render() {
-            if (!state.initialized) {
+            if (!window.state.initialized) {
                 document.getElementById('app').innerHTML = `
                     <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center">
                         <div class="text-center text-white">
@@ -1933,7 +1918,7 @@
             }
 
             const app = document.getElementById('app');
-            if (!state.currentUser) {
+            if (!window.state.currentUser) {
                 app.innerHTML = renderLoginScreen();
             } else {
                 const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
@@ -1968,6 +1953,23 @@
             render();
             console.log('App loaded with Supabase!');
         }
+
+        // ============================================
+        // EXPOSE TO WINDOW (for onclick handlers)
+        // ============================================
+        window.state = state;
+        window.render = render;
+        window.logout = logout;
+        window.submitScores = submitScores;
+        window.generateSchedule = generateSchedule;
+        window.deleteScheduleMatch = deleteScheduleMatch;
+        window.deleteTeam = deleteTeam;
+        window.deleteUser = deleteUser;
+        window.assignTeam = assignTeam;
+        window.removePlayer = removePlayer;
+        window.approveSubmission = approveSubmission;
+        window.rejectBoth = rejectBoth;
+        window.clearAllData = clearAllData;
 
         init();
         } // end startApp
