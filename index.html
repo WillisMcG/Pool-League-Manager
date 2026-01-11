@@ -490,6 +490,140 @@
             }
         }
 
+        // Confirm delete with extra safety
+        async function confirmDeleteSeason(seasonId, seasonName) {
+            if (state.seasons.length <= 1) {
+                alert('Cannot delete the only season. Create a new season first.');
+                return;
+            }
+            
+            const season = state.seasons.find(s => s.id === seasonId);
+            if (!season) return;
+            
+            // Check if season has matches
+            const { data: matchCount } = await db.from('matches')
+                .select('id', { count: 'exact', head: true })
+                .eq('season_id', seasonId);
+            
+            const hasMatches = matchCount && matchCount.length > 0;
+            
+            let confirmMsg = `Delete season "${seasonName}"?\n\n`;
+            if (hasMatches) {
+                confirmMsg += '⚠️ WARNING: This season has recorded match results!\n\n';
+            }
+            confirmMsg += 'This will permanently delete:\n';
+            confirmMsg += '• All schedule entries\n';
+            confirmMsg += '• All match results\n';
+            confirmMsg += '• All pending submissions\n\n';
+            confirmMsg += 'Type "DELETE" to confirm:';
+            
+            const confirmation = prompt(confirmMsg);
+            if (confirmation !== 'DELETE') {
+                if (confirmation !== null) {
+                    alert('Deletion cancelled. You must type "DELETE" exactly to confirm.');
+                }
+                return;
+            }
+            
+            await deleteSeason(seasonId);
+        }
+
+        // Generate schedule for a NEW season (doesn't overwrite current)
+        async function generateNewSeasonSchedule() {
+            const seasonName = document.getElementById('new-season-name-gen')?.value?.trim();
+            const startDate = document.getElementById('gen-start-date')?.value;
+            
+            if (!seasonName) {
+                alert('Please enter a season name');
+                return;
+            }
+            if (!startDate) {
+                alert('Please select a start date');
+                return;
+            }
+            if (state.teams.length < 2) {
+                alert('Need at least 2 teams to generate a schedule');
+                return;
+            }
+            if (!state.organization?.id) {
+                alert('No organization loaded');
+                return;
+            }
+            
+            // Check for duplicate name
+            if (state.seasons.find(s => s.name.toLowerCase() === seasonName.toLowerCase())) {
+                alert('A season with this name already exists. Please choose a different name.');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const orgId = state.organization.id;
+                
+                // 1. Archive current active season (don't delete it)
+                if (state.currentSeason?.isActive) {
+                    await db.from('seasons').update({ is_active: false }).eq('id', state.currentSeason.id);
+                }
+                
+                // 2. Create new season
+                const { data: newSeasonData, error: seasonError } = await db.from('seasons').insert([{
+                    name: seasonName,
+                    is_active: true,
+                    org_id: orgId
+                }]).select().single();
+                
+                if (seasonError) throw seasonError;
+                
+                const newSeason = {
+                    id: newSeasonData.id,
+                    name: newSeasonData.name,
+                    startDate: newSeasonData.start_date,
+                    endDate: newSeasonData.end_date,
+                    isActive: true,
+                    createdAt: newSeasonData.created_at,
+                    orgId: newSeasonData.org_id
+                };
+                
+                // 3. Generate schedule for new season
+                const numTeams = state.teams.length;
+                const weeksPerHalf = numTeams % 2 === 1 ? numTeams : numTeams - 1;
+                const schedule = generateRoundRobinSchedule(startDate, weeksPerHalf);
+                
+                const dbSchedule = schedule.map(s => ({
+                    week: s.week, date: s.date, home_team_id: s.homeTeamId,
+                    away_team_id: s.awayTeamId, venue: s.venue, is_bye: s.isBye,
+                    half: s.half, is_position_night: s.isPositionNight,
+                    position_home: s.positionHome, position_away: s.positionAway,
+                    season_id: newSeason.id,
+                    org_id: orgId
+                }));
+                
+                const { data: scheduleData } = await db.from('schedule').insert(dbSchedule).select();
+                
+                // 4. Update state
+                state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
+                state.currentSeason = newSeason;
+                state.schedule = scheduleData.map(s => ({
+                    id: s.id, week: s.week, date: s.date, homeTeamId: s.home_team_id,
+                    awayTeamId: s.away_team_id, venue: s.venue, isBye: s.is_bye,
+                    half: s.half, isPositionNight: s.is_position_night,
+                    positionHome: s.position_home, positionAway: s.position_away,
+                    seasonId: s.season_id, orgId: s.org_id
+                }));
+                state.matches = [];
+                state.submissions = [];
+                state.showGenSchedule = false;
+                
+                alert(`✅ Season "${seasonName}" created!\n\n${weeksPerHalf * 2 + 2} weeks generated.\n\nYour previous season has been archived and is still accessible.`);
+                render();
+            } catch (error) {
+                console.error('Error creating season:', error);
+                alert('Error creating season: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
         // ============================================
         // AUTH FUNCTIONS
         // ============================================
@@ -1442,109 +1576,237 @@
 
         function renderSchedule() {
             const isAdmin = state.currentUser.role === 'admin';
+            const completedMatches = state.matches.length;
+            const totalMatches = state.schedule.filter(s => !s.isBye).length;
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">📅 League Schedule</h2>
+                        <p class="mt-1 opacity-90">Manage seasons and view match schedules</p>
                     </div>
 
-                    ${isAdmin ? `
+                    <!-- Season Management Section -->
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="window.state.showGenSchedule = !window.state.showGenSchedule; window.render();" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg">
-                            🔄 Auto-Generate Schedule
-                        </button>
-                        ${state.showGenSchedule ? `
-                        <div class="mt-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                            <div class="flex gap-2 items-center">
-                                <label class="font-semibold">Start Date:</label>
-                                <input type="date" id="gen-start-date" class="px-4 py-2 border-2 rounded-lg">
-                                <button onclick="generateSchedule(document.getElementById('gen-start-date').value)" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg">Generate</button>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold flex items-center gap-2">
+                                📆 Seasons
+                                <span class="text-sm font-normal text-slate-500">(${state.seasons.length} total)</span>
+                            </h3>
+                            ${isAdmin ? `
+                            <button onclick="window.state.showManageSeasons = !window.state.showManageSeasons; window.render();" 
+                                class="text-sm text-emerald-600 hover:text-emerald-800 font-semibold">
+                                ${state.showManageSeasons ? '▼ Hide' : '▶ Manage'}
+                            </button>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Current Season Display -->
+                        ${state.currentSeason ? `
+                        <div class="flex items-center gap-4 p-4 bg-emerald-50 rounded-lg border-2 border-emerald-200">
+                            <div class="text-3xl">🏆</div>
+                            <div class="flex-1">
+                                <div class="font-bold text-lg text-emerald-800">${state.currentSeason.name}</div>
+                                <div class="text-sm text-emerald-600">
+                                    ${state.currentSeason.isActive ? '★ Active Season' : 'Archived'} 
+                                    • ${completedMatches}/${totalMatches} matches complete
+                                </div>
                             </div>
-                            <p class="text-xs text-blue-600 mt-2">⚠️ This will replace any existing schedule</p>
+                            <select onchange="switchSeason(this.value)" class="px-3 py-2 border-2 border-emerald-300 rounded-lg bg-white text-sm">
+                                ${state.seasons.map(s => `
+                                    <option value="${s.id}" ${state.currentSeason?.id === s.id ? 'selected' : ''}>
+                                        ${s.name}${s.isActive ? ' ★' : ''}
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        ` : `
+                        <div class="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200 text-center">
+                            <p class="text-yellow-800">No seasons created yet. ${isAdmin ? 'Create one below to get started!' : 'Contact admin to create a season.'}</p>
+                        </div>
+                        `}
+                        
+                        <!-- Season Management (Admin Only) -->
+                        ${isAdmin && state.showManageSeasons ? `
+                        <div class="mt-4 border-t pt-4">
+                            <h4 class="font-semibold mb-3">All Seasons</h4>
+                            <div class="space-y-2 max-h-48 overflow-y-auto">
+                                ${state.seasons.length === 0 ? `
+                                    <p class="text-slate-500 text-sm">No seasons yet</p>
+                                ` : state.seasons.map(s => {
+                                    const seasonMatches = state.schedule.filter(sch => sch.seasonId === s.id && !sch.isBye).length;
+                                    return `
+                                    <div class="flex items-center justify-between p-3 rounded-lg ${s.id === state.currentSeason?.id ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-lg">${s.isActive ? '🏆' : '📁'}</span>
+                                            <div>
+                                                <div class="font-semibold">${s.name}</div>
+                                                <div class="text-xs text-slate-500">
+                                                    ${s.isActive ? '★ Active' : 'Archived'}
+                                                    ${s.id === state.currentSeason?.id ? ' • Currently Viewing' : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            ${!s.isActive ? `
+                                                <button onclick="setActiveSeason('${s.id}')" class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs hover:bg-emerald-200">
+                                                    Set Active
+                                                </button>
+                                            ` : ''}
+                                            <button onclick="confirmDeleteSeason('${s.id}', '${s.name.replace(/'/g, "\\'")}')" 
+                                                class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                                                ${state.seasons.length <= 1 ? 'disabled title="Cannot delete only season"' : ''}>
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </div>
+                                `}).join('')}
+                            </div>
                         </div>
                         ` : ''}
                     </div>
-                    ` : ''}
 
+                    <!-- Schedule Table -->
                     ${state.schedule.length === 0 ? `
                         <div class="bg-white rounded-xl shadow-lg p-12 text-center">
                             <div class="text-6xl mb-4">📅</div>
-                            <h3 class="text-2xl font-bold">No Schedule Yet</h3>
+                            <h3 class="text-2xl font-bold text-slate-800 mb-2">No Schedule Yet</h3>
+                            <p class="text-slate-600">${isAdmin ? 'Use the generator below to create a schedule' : 'Check back later for the schedule'}</p>
                         </div>
                     ` : `
-                        <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-slate-100">
-                                    <tr>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Week</th>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Half</th>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Date</th>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Matchup</th>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Venue</th>
-                                        <th class="px-4 py-3 text-left text-sm font-bold">Status</th>
-                                        ${isAdmin ? '<th class="px-4 py-3"></th>' : ''}
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y">
-                                    ${state.schedule.map(match => {
-                                        let matchupDisplay, venueDisplay;
+                        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div class="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
+                                <h3 class="font-bold">${state.currentSeason?.name || 'Schedule'}</h3>
+                                <div class="text-sm text-slate-600">
+                                    ${state.schedule.filter(s => !s.isBye && !s.isPositionNight).length} matches 
+                                    • ${[...new Set(state.schedule.map(s => s.week))].length} weeks
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead class="bg-slate-100">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Week</th>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Half</th>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Date</th>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Matchup</th>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Venue</th>
+                                            <th class="px-4 py-3 text-left text-sm font-bold">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y">
+                                        ${state.schedule.map(match => {
+                                            let matchupDisplay, venueDisplay;
 
-                                        if (match.isPositionNight) {
-                                            const rh = getResolvedPositionTeam(match.homeTeamId, match.half);
-                                            const ra = getResolvedPositionTeam(match.awayTeamId, match.half);
-                                            if (match.isBye) {
-                                                matchupDisplay = `<span class="text-purple-600">🏖️ ${rh?.name || match.positionHome + getOrdinal(match.positionHome) + ' Place'} - BYE</span>`;
-                                                venueDisplay = '-';
-                                            } else if (rh && ra) {
-                                                matchupDisplay = `<span class="text-purple-700 font-bold">🏆 #${match.positionAway} ${ra.name} @ #${match.positionHome} ${rh.name}</span>`;
-                                                venueDisplay = rh.venue || 'TBD';
+                                            if (match.isPositionNight) {
+                                                const rh = getResolvedPositionTeam(match.homeTeamId, match.half);
+                                                const ra = getResolvedPositionTeam(match.awayTeamId, match.half);
+                                                if (match.isBye) {
+                                                    matchupDisplay = `<span class="text-purple-600">🏖️ ${rh?.name || match.positionHome + getOrdinal(match.positionHome) + ' Place'} - BYE</span>`;
+                                                    venueDisplay = '-';
+                                                } else if (rh && ra) {
+                                                    matchupDisplay = `<span class="text-purple-700 font-bold">🏆 #${match.positionAway} ${ra.name} @ #${match.positionHome} ${rh.name}</span>`;
+                                                    venueDisplay = rh.venue || 'TBD';
+                                                } else {
+                                                    matchupDisplay = `<span class="text-purple-500 italic">🏆 ${match.positionAway}${getOrdinal(match.positionAway)} @ ${match.positionHome}${getOrdinal(match.positionHome)}</span>`;
+                                                    venueDisplay = 'TBD';
+                                                }
                                             } else {
-                                                matchupDisplay = `<span class="text-purple-500 italic">🏆 ${match.positionAway}${getOrdinal(match.positionAway)} @ ${match.positionHome}${getOrdinal(match.positionHome)}</span>`;
-                                                venueDisplay = 'TBD';
+                                                const home = state.teams.find(t => t.id === match.homeTeamId);
+                                                const away = state.teams.find(t => t.id === match.awayTeamId);
+                                                if (match.isBye) {
+                                                    matchupDisplay = `<span class="text-blue-600">🏖️ ${home?.name || '?'} - BYE</span>`;
+                                                    venueDisplay = '-';
+                                                } else {
+                                                    matchupDisplay = `${away?.name || '?'} @ ${home?.name || '?'}`;
+                                                    venueDisplay = match.venue || 'TBD';
+                                                }
                                             }
-                                        } else {
-                                            const home = state.teams.find(t => t.id === match.homeTeamId);
-                                            const away = state.teams.find(t => t.id === match.awayTeamId);
-                                            if (match.isBye) {
-                                                matchupDisplay = `<span class="text-blue-600">🏖️ ${home?.name || '?'} - BYE</span>`;
-                                                venueDisplay = '-';
-                                            } else {
-                                                matchupDisplay = `${away?.name || '?'} @ ${home?.name || '?'}`;
-                                                venueDisplay = match.venue || 'TBD';
-                                            }
-                                        }
 
-                                        const result = state.matches.find(m => m.scheduleId === match.id);
-                                        const subs = state.submissions.filter(s => s.scheduleId === match.id);
+                                            const result = state.matches.find(m => m.scheduleId === match.id);
+                                            const subs = state.submissions.filter(s => s.scheduleId === match.id);
 
-                                        let status = '<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Pending</span>';
-                                        if (match.isBye) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">BYE</span>';
-                                        else if (result) status = `<span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">${result.awayScore}-${result.homeScore}</span>`;
-                                        else if (subs.length === 2) status = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">⚠️ Conflict</span>';
-                                        else if (subs.length === 1) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">1/2</span>';
+                                            let status = '<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Pending</span>';
+                                            if (match.isBye) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">BYE</span>';
+                                            else if (result) status = `<span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">${result.awayScore}-${result.homeScore}</span>`;
+                                            else if (subs.length === 2) status = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">⚠️ Conflict</span>';
+                                            else if (subs.length === 1) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">1/2</span>';
 
-                                        const halfDisplay = match.isPositionNight
-                                            ? '<span class="px-2 py-1 bg-purple-200 text-purple-900 rounded text-xs font-bold">Position</span>'
-                                            : `<span class="px-2 py-1 ${match.half === 1 ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'} rounded text-xs">${match.half === 1 ? '1st' : '2nd'}</span>`;
+                                            const halfDisplay = match.isPositionNight
+                                                ? '<span class="px-2 py-1 bg-purple-200 text-purple-900 rounded text-xs font-bold">Position</span>'
+                                                : `<span class="px-2 py-1 ${match.half === 1 ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'} rounded text-xs">${match.half === 1 ? '1st' : '2nd'}</span>`;
 
-                                        const rowClass = match.isPositionNight ? 'bg-purple-50' : (match.isBye ? 'bg-blue-50' : '');
+                                            const rowClass = match.isPositionNight ? 'bg-purple-50' : (match.isBye ? 'bg-blue-50' : '');
 
-                                        return `
-                                            <tr class="${rowClass} hover:bg-slate-50">
-                                                <td class="px-4 py-3 font-bold">${match.week}</td>
-                                                <td class="px-4 py-3">${halfDisplay}</td>
-                                                <td class="px-4 py-3">${match.date}</td>
-                                                <td class="px-4 py-3">${matchupDisplay}</td>
-                                                <td class="px-4 py-3 text-slate-600">${venueDisplay}</td>
-                                                <td class="px-4 py-3">${status}</td>
-                                                ${isAdmin && !match.isBye ? `<td class="px-4 py-3"><button onclick="deleteScheduleMatch('${match.id}')" class="text-red-600 text-sm">Delete</button></td>` : (isAdmin ? '<td></td>' : '')}
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
+                                            return `
+                                                <tr class="${rowClass} hover:bg-slate-50">
+                                                    <td class="px-4 py-3 font-bold">${match.week}</td>
+                                                    <td class="px-4 py-3">${halfDisplay}</td>
+                                                    <td class="px-4 py-3">${match.date}</td>
+                                                    <td class="px-4 py-3">${matchupDisplay}</td>
+                                                    <td class="px-4 py-3 text-slate-600">${venueDisplay}</td>
+                                                    <td class="px-4 py-3">${status}</td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     `}
+
+                    <!-- Schedule Generator (Admin Only - At Bottom) -->
+                    ${isAdmin ? `
+                    <div class="bg-white rounded-xl shadow-lg p-6 border-2 border-dashed border-slate-300">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold flex items-center gap-2">
+                                ➕ Create New Season
+                            </h3>
+                            <button onclick="window.state.showGenSchedule = !window.state.showGenSchedule; window.render();" 
+                                class="px-4 py-2 ${state.showGenSchedule ? 'bg-slate-200 text-slate-700' : 'bg-emerald-600 text-white'} font-semibold rounded-lg">
+                                ${state.showGenSchedule ? '✕ Cancel' : '🔄 Generate New Schedule'}
+                            </button>
+                        </div>
+                        
+                        ${state.showGenSchedule ? `
+                        <div class="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                            <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4">
+                                <p class="text-yellow-800 text-sm font-semibold">⚠️ This will create a NEW season</p>
+                                <p class="text-yellow-700 text-xs mt-1">Your current season "${state.currentSeason?.name || 'N/A'}" will be preserved and archived.</p>
+                            </div>
+                            
+                            <div class="grid md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-700 mb-1">Season Name</label>
+                                    <input type="text" id="new-season-name-gen" placeholder="e.g., Spring 2025" 
+                                        class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-700 mb-1">Start Date</label>
+                                    <input type="date" id="gen-start-date" class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white p-3 rounded-lg border mb-4">
+                                <h4 class="font-semibold text-sm mb-2">Schedule Rules:</h4>
+                                <ul class="text-xs text-slate-600 space-y-1">
+                                    <li>✓ Round-robin: Each team plays every other team twice (home & away)</li>
+                                    <li>✓ ${state.teams.length} teams × 2 halves + 2 Position Nights = ${state.teams.length * 2 + 2} weeks</li>
+                                    <li>✓ Each team gets 1 bye per half</li>
+                                    <li>✓ Position Nights match teams by standings (1st vs 2nd, etc.)</li>
+                                </ul>
+                            </div>
+                            
+                            <button onclick="generateNewSeasonSchedule()" 
+                                class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
+                                🚀 Create Season & Generate Schedule
+                            </button>
+                        </div>
+                        ` : `
+                        <p class="text-slate-500 text-sm">Create a new season with an auto-generated schedule. Your current season will be preserved.</p>
+                        `}
+                    </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -2609,6 +2871,8 @@
         window.setActiveSeason = setActiveSeason;
         window.deleteSeason = deleteSeason;
         window.createSeason = createSeason;
+        window.confirmDeleteSeason = confirmDeleteSeason;
+        window.generateNewSeasonSchedule = generateNewSeasonSchedule;
 
         // ============================================
         // MAIN RENDER
