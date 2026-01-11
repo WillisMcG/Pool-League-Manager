@@ -1507,11 +1507,39 @@
         }
 
         function renderHeader() {
+            // Calculate trial status
+            let trialBadge = '';
+            if (state.organization) {
+                const status = state.organization.subscriptionStatus;
+                if (status === 'trial') {
+                    const trialEnds = new Date(state.organization.trialEndsAt);
+                    const now = new Date();
+                    const daysLeft = Math.ceil((trialEnds - now) / (1000 * 60 * 60 * 24));
+                    if (daysLeft > 0) {
+                        trialBadge = `<a href="pricing.html" class="ml-2 px-2 py-1 bg-yellow-400 text-yellow-900 text-xs rounded-full font-bold hover:bg-yellow-300">
+                            ⏰ ${daysLeft} days left - Upgrade
+                        </a>`;
+                    } else {
+                        trialBadge = `<a href="pricing.html" class="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full font-bold hover:bg-red-400">
+                            ⚠️ Trial Expired - Upgrade Now
+                        </a>`;
+                    }
+                } else if (status === 'active') {
+                    const tier = state.organization.subscriptionTier;
+                    trialBadge = `<span class="ml-2 px-2 py-1 bg-emerald-400 text-emerald-900 text-xs rounded-full font-bold">
+                        ✓ ${tier.charAt(0).toUpperCase() + tier.slice(1)}
+                    </span>`;
+                }
+            }
+            
             return `
                 <header class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 text-white shadow-2xl">
                     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
                         <div>
-                            <h1 class="text-2xl md:text-4xl font-black">🏆 ${state.leagueName}</h1>
+                            <div class="flex items-center flex-wrap">
+                                <h1 class="text-2xl md:text-4xl font-black">🏆 ${state.leagueName}</h1>
+                                ${trialBadge}
+                            </div>
                             ${state.seasons.length > 0 ? `
                             <div class="flex items-center gap-2 mt-1">
                                 <select onchange="switchSeason(this.value)" class="bg-white/20 text-white text-sm rounded px-2 py-1 border-0">
@@ -2692,10 +2720,68 @@
         };
 
         function renderSettings() {
+            // Get subscription info
+            const org = state.organization;
+            const subStatus = org?.subscriptionStatus || 'trial';
+            const subTier = org?.subscriptionTier || 'trial';
+            const trialEndsAt = org?.trialEndsAt ? new Date(org.trialEndsAt) : null;
+            const daysLeft = trialEndsAt ? Math.ceil((trialEndsAt - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">⚙️ Settings</h2>
+                    </div>
+                    
+                    <!-- Subscription Section -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-lg font-bold mb-4">💳 Subscription</h3>
+                        ${subStatus === 'trial' ? `
+                        <div class="p-4 rounded-lg ${daysLeft <= 3 ? 'bg-red-50 border-2 border-red-200' : 'bg-yellow-50 border-2 border-yellow-200'}">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">${daysLeft <= 3 ? '⚠️' : '⏰'}</span>
+                                <div>
+                                    <p class="font-bold ${daysLeft <= 3 ? 'text-red-800' : 'text-yellow-800'}">
+                                        ${daysLeft <= 0 ? 'Your free trial has expired' : `Free Trial - ${daysLeft} days remaining`}
+                                    </p>
+                                    <p class="text-sm ${daysLeft <= 3 ? 'text-red-700' : 'text-yellow-700'}">
+                                        ${daysLeft <= 0 ? 'Upgrade now to continue using Pool League Manager' : 'Upgrade anytime to unlock all features'}
+                                    </p>
+                                </div>
+                            </div>
+                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700">
+                                Upgrade Now →
+                            </a>
+                        </div>
+                        ` : subStatus === 'active' ? `
+                        <div class="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">✅</span>
+                                <div>
+                                    <p class="font-bold text-emerald-800">
+                                        ${subTier.charAt(0).toUpperCase() + subTier.slice(1)} Plan - Active
+                                    </p>
+                                    <p class="text-sm text-emerald-700">Thank you for subscribing!</p>
+                                </div>
+                            </div>
+                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-slate-600 text-white text-center font-bold rounded-lg hover:bg-slate-700">
+                                Manage Subscription →
+                            </a>
+                        </div>
+                        ` : `
+                        <div class="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">❌</span>
+                                <div>
+                                    <p class="font-bold text-red-800">Subscription Expired</p>
+                                    <p class="text-sm text-red-700">Renew to continue using Pool League Manager</p>
+                                </div>
+                            </div>
+                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700">
+                                Renew Subscription →
+                            </a>
+                        </div>
+                        `}
                     </div>
                     
                     <!-- Season Management -->
@@ -2719,7 +2805,7 @@
                                         </div>
                                         <div class="flex gap-2">
                                             ${!s.isActive ? `<button onclick="setActiveSeason('${s.id}')" class="text-xs px-3 py-1 bg-green-600 text-white rounded">Set Active</button>` : ''}
-                                            <button onclick="deleteSeason('${s.id}')" class="text-red-600 text-sm">❌</button>
+                                            <button onclick="confirmDeleteSeason('${s.id}', '${s.name.replace(/'/g, "\\'")}')" class="text-red-600 text-sm">❌</button>
                                         </div>
                                     </div>
                                 `).join('') + '</div>'
