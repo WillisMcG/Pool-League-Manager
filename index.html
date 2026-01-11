@@ -1849,7 +1849,7 @@
         }
 
         // ============================================
-        // EVENT HANDLERS
+        // EVENT HANDLERS (attach to window for onclick)
         // ============================================
         window.handleLogin = async function() {
             const username = document.getElementById('login-username').value;
@@ -1889,7 +1889,7 @@
         };
 
         window.handleAddPlayer = async function(teamId) {
-            const input = document.getElementById(`player-${teamId}`);
+            const input = document.getElementById('player-' + teamId);
             if (input.value.trim()) {
                 await addPlayer(teamId, input.value);
                 input.value = '';
@@ -1900,6 +1900,21 @@
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
         };
+        
+        // Expose all functions needed by onclick handlers
+        window.logout = logout;
+        window.submitScores = submitScores;
+        window.generateSchedule = generateSchedule;
+        window.deleteScheduleMatch = deleteScheduleMatch;
+        window.deleteTeam = deleteTeam;
+        window.deleteUser = deleteUser;
+        window.assignTeam = assignTeam;
+        window.removePlayer = removePlayer;
+        window.approveSubmission = approveSubmission;
+        window.rejectBoth = rejectBoth;
+        window.clearAllData = clearAllData;
+        window.render = render;
+        window.state = state;
 
         // ============================================
         // MAIN RENDER
