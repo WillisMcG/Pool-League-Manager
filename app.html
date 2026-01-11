@@ -2671,7 +2671,7 @@
         window.togglePlayDay = togglePlayDay;
         
         // Generate custom round robin schedule
-        function generateCustomRoundRobinSchedule() {
+        async function generateCustomRoundRobinSchedule() {
             const startDateVal = document.getElementById('custom-rr-start-date')?.value;
             if (!startDateVal) {
                 alert('Please select a start date');
@@ -2689,32 +2689,79 @@
                 return;
             }
             
-            // Store config in season settings for later reference
-            const seasonSettings = {
-                matchesPerNight: cfg.matchesPerNight,
-                bestOf: cfg.bestOf,
-                playDays: [...cfg.playDays],
-                frequency: cfg.frequency
-            };
+            const confirmMsg = `Generate custom round-robin schedule for "${state.currentSeason?.name}"?\n\nThis will DELETE all existing matches in this season and create a new schedule.`;
+            if (!confirm(confirmMsg)) return;
             
-            // Generate the schedule using the custom settings
-            const schedule = generateCustomRRSchedule(startDateVal, cfg);
-            
-            if (!schedule || schedule.length === 0) {
-                alert('Failed to generate schedule. Please try again.');
-                return;
+            showLoading();
+            try {
+                const seasonId = state.currentSeason.id;
+                const orgId = state.organization.id;
+                
+                // Clear existing schedule for this season
+                await db.from('matches').delete().eq('season_id', seasonId);
+                await db.from('submissions').delete().eq('season_id', seasonId);
+                await db.from('schedule').delete().eq('season_id', seasonId);
+                
+                // Generate the schedule using the custom settings
+                const schedule = generateCustomRRSchedule(startDateVal, cfg);
+                
+                if (!schedule || schedule.length === 0) {
+                    alert('Failed to generate schedule. Please try again.');
+                    return;
+                }
+                
+                // Convert to database format
+                const dbSchedule = schedule.map(s => ({
+                    week: s.week,
+                    date: s.date,
+                    home_team_id: s.homeTeamId,
+                    away_team_id: s.awayTeamId,
+                    venue: s.venue,
+                    is_bye: s.isBye,
+                    half: s.half,
+                    is_position_night: s.isPositionNight,
+                    position_home: s.positionHome,
+                    position_away: s.positionAway,
+                    season_id: seasonId,
+                    org_id: orgId,
+                    match_format: s.matchFormat
+                }));
+                
+                const { data, error } = await db.from('schedule').insert(dbSchedule).select();
+                
+                if (error) throw error;
+                
+                // Convert back to app format
+                state.schedule = data.map(s => ({
+                    id: s.id,
+                    week: s.week,
+                    date: s.date,
+                    homeTeamId: s.home_team_id,
+                    awayTeamId: s.away_team_id,
+                    venue: s.venue,
+                    isBye: s.is_bye,
+                    half: s.half,
+                    isPositionNight: s.is_position_night,
+                    positionHome: s.position_home,
+                    positionAway: s.position_away,
+                    seasonId: s.season_id,
+                    orgId: s.org_id,
+                    matchFormat: s.match_format
+                }));
+                
+                state.matches = [];
+                state.submissions = [];
+                state.scheduleMode = null;
+                state.autoGenMode = null;
+                
+                alert(`Schedule generated successfully!\n\n• ${schedule.filter(s => !s.isBye && !s.isPositionNight).length} regular matches\n• ${schedule.filter(s => s.isBye).length} bye weeks\n• ${schedule.filter(s => s.isPositionNight).length} position night matches\n\nMatch format: Best of ${cfg.bestOf * 2 - 1} (${cfg.matchesPerNight} matches per night)`);
+                render();
+            } catch (error) {
+                console.error('Error generating schedule:', error);
+                alert('Error generating schedule: ' + error.message);
+            } finally {
+                hideLoading();
             }
-            
-            // Save to state
-            state.schedule = schedule;
-            storage.set('schedule', schedule);
-            
-            // Reset UI state
-            state.scheduleMode = null;
-            state.autoGenMode = null;
-            
-            alert(`Schedule generated successfully!\n\n• ${schedule.filter(s => !s.isBye && !s.isPositionNight).length} regular matches\n• ${schedule.filter(s => s.isBye).length} bye weeks\n• ${schedule.filter(s => s.isPositionNight).length} position night matches\n\nMatch format: Best of ${cfg.bestOf * 2 - 1} (${cfg.matchesPerNight} matches per night)`);
-            render();
         }
         window.generateCustomRoundRobinSchedule = generateCustomRoundRobinSchedule;
         
