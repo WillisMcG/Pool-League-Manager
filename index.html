@@ -548,6 +548,74 @@
             }
         }
 
+        async function resetPassword(userId) {
+            const user = state.users.find(u => u.id === userId);
+            if (!user) return;
+            
+            const newPassword = prompt(`Enter new password for "${user.username}":\n\n(Minimum 4 characters)`);
+            if (!newPassword) return;
+            if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return; }
+            
+            showLoading();
+            try {
+                await db.from('users').update({ password: newPassword }).eq('id', userId);
+                state.users = state.users.map(u => u.id === userId ? { ...u, password: newPassword } : u);
+                alert(`Password reset for "${user.username}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
+                render();
+            } catch (error) {
+                console.error('Error resetting password:', error);
+                alert('Error resetting password');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function selfServiceReset(username, phone) {
+            if (!username || !phone) { alert('Username and phone required'); return false; }
+            
+            showLoading();
+            try {
+                // Look up user by username and verify phone
+                const { data: users, error } = await db.from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                if (!users || users.length === 0) {
+                    alert('Username not found');
+                    return false;
+                }
+                
+                const user = users[0];
+                
+                // Normalize phone numbers for comparison (remove all non-digits)
+                const storedPhone = (user.phone || '').replace(/\D/g, '');
+                const inputPhone = phone.replace(/\D/g, '');
+                
+                if (storedPhone !== inputPhone) {
+                    alert('Phone number does not match our records');
+                    return false;
+                }
+                
+                // Phone verified - prompt for new password
+                const newPassword = prompt('Phone verified! Enter your new password:\n\n(Minimum 4 characters)');
+                if (!newPassword) return false;
+                if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return false; }
+                
+                await db.from('users').update({ password: newPassword }).eq('id', user.id);
+                alert('Password reset successfully! You can now log in with your new password.');
+                return true;
+            } catch (error) {
+                console.error('Error resetting password:', error);
+                alert('Error resetting password');
+                return false;
+            } finally {
+                hideLoading();
+            }
+        }
+
         async function assignTeam(userId, teamId) {
             showLoading();
             try {
@@ -1160,13 +1228,33 @@
                             <p class="text-slate-600">${isFirstUser ? 'Create Admin Account' : 'Sign In'}</p>
                             <p class="text-xs text-emerald-600 mt-2">☁️ Cloud-Synced</p>
                         </div>
-                        <div class="space-y-4">
+                        
+                        <!-- Login Form -->
+                        <div id="login-form" class="space-y-4">
                             <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             ${isFirstUser ? `<input type="tel" id="login-phone" placeholder="Phone (required)" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">` : ''}
                             <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
                                 ${isFirstUser ? 'Create Admin Account' : 'Sign In'}
+                            </button>
+                            ${!isFirstUser ? `
+                            <button onclick="showResetForm()" class="w-full text-sm text-emerald-600 hover:text-emerald-800 py-2">
+                                Forgot Password?
+                            </button>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Reset Password Form (hidden by default) -->
+                        <div id="reset-form" class="space-y-4 hidden">
+                            <p class="text-sm text-slate-600 text-center mb-4">Enter your username and phone number to reset your password.</p>
+                            <input type="text" id="reset-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="tel" id="reset-phone" placeholder="Phone number on file" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <button onclick="handleSelfReset()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-lg hover:from-yellow-600 hover:to-orange-600">
+                                🔑 Reset Password
+                            </button>
+                            <button onclick="showLoginForm()" class="w-full text-sm text-slate-600 hover:text-slate-800 py-2">
+                                ← Back to Login
                             </button>
                         </div>
                     </div>
@@ -1767,11 +1855,15 @@
                                     ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
                                 </div>
                                 ${isAdmin && user.id !== state.currentUser.id ? `
+                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
                                     <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
                                         <option value="">No team</option>
                                         ${state.teams.map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                                     </select>
                                     <button onclick="deleteUser('${user.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
+                                ` : ''}
+                                ${isCaptain && user.id !== state.currentUser.id ? `
+                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
                                 ` : ''}
                             </div>
                         `}).join('')}
@@ -2369,6 +2461,29 @@
         window.handleSaveSettings = async function() {
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
+        };
+
+        // Password reset handlers
+        window.resetPassword = resetPassword;
+        
+        window.showResetForm = function() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('reset-form').classList.remove('hidden');
+        };
+        
+        window.showLoginForm = function() {
+            document.getElementById('reset-form').classList.add('hidden');
+            document.getElementById('login-form').classList.remove('hidden');
+        };
+        
+        window.handleSelfReset = async function() {
+            const username = document.getElementById('reset-username').value;
+            const phone = document.getElementById('reset-phone').value;
+            if (await selfServiceReset(username, phone)) {
+                document.getElementById('reset-username').value = '';
+                document.getElementById('reset-phone').value = '';
+                showLoginForm();
+            }
         };
 
         window.handleCreateSeason = async function() {
