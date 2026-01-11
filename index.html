@@ -2706,6 +2706,8 @@
                 }
             }
 
+            // Always mark as initialized so login screen shows
+            state.initialized = true;
             render();
             console.log('App loaded with Supabase!');
         }
