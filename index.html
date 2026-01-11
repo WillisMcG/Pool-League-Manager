@@ -485,7 +485,7 @@
             render();
         }
 
-        async function createAccount(username, password, phone, role = null) {
+        async function createAccount(username, password, phone, role = null, teamId = null) {
             if (!username || !password) { alert('Username and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
             if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
@@ -493,10 +493,13 @@
             showLoading();
             try {
                 const isFirstUser = state.users.length === 0;
+                // First user is admin, others default to player unless specified
+                const finalRole = isFirstUser ? 'admin' : (role || 'player');
+                
                 const { data, error } = await db.from('users').insert([{
                     username, password, phone,
-                    role: role || (isFirstUser ? 'admin' : 'captain'),
-                    team_id: null,
+                    role: finalRole,
+                    team_id: teamId || null,
                     created_by: state.currentUser?.id || null
                 }]).select().single();
 
@@ -514,7 +517,7 @@
                     alert('Admin account created!');
                     await login(username, password);
                 } else {
-                    alert(`User "${username}" created!`);
+                    alert('User "' + username + '" created as ' + finalRole + '!');
                 }
                 render();
                 return true;
@@ -572,10 +575,21 @@
 
                 if (error) throw error;
 
-                state.teams = [...state.teams, {
+                const newTeam = {
                     id: data.id, name: data.name, venue: data.venue,
                     captain: data.captain, players: data.players || []
-                }];
+                };
+                
+                state.teams = [...state.teams, newTeam];
+
+                // Auto-assign captain to this team
+                if (captain) {
+                    const captainUser = state.users.find(u => u.username === captain);
+                    if (captainUser) {
+                        await db.from('users').update({ team_id: newTeam.id }).eq('id', captainUser.id);
+                        state.users = state.users.map(u => u.id === captainUser.id ? { ...u, teamId: newTeam.id } : u);
+                    }
+                }
 
                 state.showCreateTeam = false;
                 alert('Team "' + name + '" created!');
@@ -1182,7 +1196,7 @@
                         <div class="flex items-center gap-3">
                             <div class="text-right text-sm">
                                 <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : ''}${state.currentUser.username}</div>
+                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.username}</div>
                             </div>
                             <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
                         </div>
@@ -1193,14 +1207,20 @@
 
         function renderNav() {
             const isAdmin = state.currentUser.role === 'admin';
+            const isCaptain = state.currentUser.role === 'captain';
+            const isPlayer = state.currentUser.role === 'player';
+            
+            // Players: view-only access to schedule, standings, history, their team
+            // Captains: can submit scores, manage their team roster
+            // Admins: full access
             const tabs = [
                 { id: 'schedule', label: '📅 Schedule' },
-                { id: 'submit', label: '📝 Submit' },
+                ...(!isPlayer ? [{ id: 'submit', label: '📝 Submit' }] : []),
                 { id: 'standings', label: '🏆 Standings' },
                 { id: 'players', label: '👤 Players' },
                 { id: 'history', label: '📜 History' },
                 { id: 'teams', label: '🏠 Teams' },
-                { id: 'users', label: '👥 Users' },
+                ...(!isPlayer ? [{ id: 'users', label: '👥 Users' }] : []),
                 ...(isAdmin ? [{ id: 'admin', label: '🛡️ Admin' }, { id: 'settings', label: '⚙️ Settings' }] : [])
             ];
 
@@ -1557,6 +1577,8 @@
 
         function renderTeams() {
             const isAdmin = state.currentUser.role === 'admin';
+            const isCaptain = state.currentUser.role === 'captain';
+            const isPlayer = state.currentUser.role === 'player';
             const myTeamId = state.currentUser.teamId;
 
             // Get captains not already assigned to a team
@@ -1569,6 +1591,7 @@
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">🏠 Teams</h2>
+                        ${isPlayer ? '<p class="opacity-90 mt-1">View team information</p>' : ''}
                     </div>
 
                     ${isAdmin ? `
@@ -1643,7 +1666,8 @@
                     ` : ''}
 
                     ${state.teams.map(team => {
-                        const canEdit = isAdmin || myTeamId === team.id;
+                        // Players can view but not edit, even their own team
+                        const canEdit = isAdmin || (isCaptain && myTeamId === team.id);
                         const venueData = state.venues.find(v => (typeof v === 'string' ? v : v.name) === team.venue);
                         const venueObj = venueData ? (typeof venueData === 'string' ? { name: venueData } : venueData) : null;
                         const venuePhone = venueObj && venueObj.phone ? venueObj.phone.replace(/[^0-9+]/g, '') : '';
@@ -1653,7 +1677,7 @@
                         <div class="bg-white rounded-xl shadow-lg p-6 ${myTeamId === team.id ? 'border-2 border-emerald-400' : ''}">
                             <div class="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 class="text-2xl font-bold">${team.name}</h3>
+                                    <h3 class="text-2xl font-bold">${team.name} ${myTeamId === team.id ? '<span class="text-sm bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">Your Team</span>' : ''}</h3>
                                     <div class="text-slate-600">
                                         <span>📍 ${team.venue || 'No venue'}</span>
                                         ${venueObj && venueObj.address ? ' <a href="https://maps.google.com/?q=' + venueAddress + '" target="_blank" class="text-blue-600 hover:underline">(Map)</a>' : ''}
@@ -1688,32 +1712,59 @@
 
         function renderUsers() {
             const isAdmin = state.currentUser.role === 'admin';
+            const isCaptain = state.currentUser.role === 'captain';
+            const myTeamId = state.currentUser.teamId;
+            
+            // Captains only see users on their team, admins see all
+            const visibleUsers = isAdmin 
+                ? state.users 
+                : state.users.filter(u => u.teamId === myTeamId || u.id === state.currentUser.id);
+            
+            const myTeam = state.teams.find(t => t.id === myTeamId);
+            const canCreateUsers = isAdmin || isCaptain;
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">👥 Users</h2>
+                        <h2 class="text-3xl font-black">👥 ${isCaptain ? 'Team Members' : 'Users'}</h2>
+                        ${isCaptain && myTeam ? '<p class="opacity-90 mt-1">' + myTeam.name + '</p>' : ''}
                     </div>
 
+                    ${canCreateUsers ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ Create User</button>
+                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
                         <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
                             <input type="text" id="new-username" placeholder="Username" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
-                            ${isAdmin ? '<select id="new-role" class="w-full px-4 py-2 border-2 rounded-lg"><option value="captain">Captain</option><option value="admin">Admin</option></select>' : ''}
+                            ${isAdmin ? `
+                                <select id="new-user-role" class="w-full px-4 py-2 border-2 rounded-lg">
+                                    <option value="player">Player (view only)</option>
+                                    <option value="captain">Captain (can submit scores)</option>
+                                    <option value="admin">Admin (full access)</option>
+                                </select>
+                                <select id="new-user-team" class="w-full px-4 py-2 border-2 rounded-lg">
+                                    <option value="">No team</option>
+                                    ${state.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                                </select>
+                            ` : `<p class="text-xs text-slate-500">New member will be added to your team as a player</p>`}
                             <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
                         </div>
                     </div>
+                    ` : ''}
 
                     <div class="bg-white rounded-xl shadow-lg divide-y">
-                        ${state.users.map(user => {
+                        ${visibleUsers.length === 0 ? '<p class="p-6 text-slate-500 text-center">No team members found</p>' : ''}
+                        ${visibleUsers.map(user => {
                             const team = state.teams.find(t => t.id === user.teamId);
+                            const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
                             return `
                             <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
-                                <div class="text-3xl">${user.role === 'admin' ? '🛡️' : '👤'}</div>
+                                <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold">${user.username}</div>
+                                    <div class="font-bold">${user.username} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
+                                    ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
                                 </div>
                                 ${isAdmin && user.id !== state.currentUser.id ? `
                                     <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
@@ -2260,12 +2311,30 @@
             const username = document.getElementById('new-username').value;
             const password = document.getElementById('new-password').value;
             const phone = document.getElementById('new-phone').value;
-            const roleEl = document.getElementById('new-role');
-            const role = roleEl ? roleEl.value : 'captain';
-            if (await createAccount(username, password, phone, role)) {
+            
+            // Admins can pick role and team, captains create players for their team
+            const roleSelect = document.getElementById('new-user-role');
+            const teamSelect = document.getElementById('new-user-team');
+            
+            let role = null;
+            let teamId = null;
+            
+            if (roleSelect && teamSelect) {
+                // Admin - use selected role and team
+                role = roleSelect.value || 'player';
+                teamId = teamSelect.value || null;
+            } else if (state.currentUser.role === 'captain') {
+                // Captain - create player for their team
+                role = 'player';
+                teamId = state.currentUser.teamId;
+            }
+            
+            if (await createAccount(username, password, phone, role, teamId)) {
                 document.getElementById('new-username').value = '';
                 document.getElementById('new-password').value = '';
                 document.getElementById('new-phone').value = '';
+                if (roleSelect) roleSelect.value = 'player';
+                if (teamSelect) teamSelect.value = '';
                 document.getElementById('create-user-form').classList.add('hidden');
             }
         };
