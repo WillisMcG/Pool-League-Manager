@@ -132,6 +132,10 @@
         // STATE
         // ============================================
         let state = {
+            // Organization (multi-tenant)
+            organization: null,
+            
+            // Core data
             users: [],
             teams: [],
             schedule: [],
@@ -160,43 +164,61 @@
         async function loadAllData() {
             showLoading();
             try {
-                const { data: settings, error: settingsError } = await db.from('league_settings').select('*').limit(1).single();
+                const orgId = state.organization?.id;
+                if (!orgId) {
+                    console.error('No organization loaded');
+                    hideLoading();
+                    return;
+                }
+
+                const { data: settings, error: settingsError } = await db.from('league_settings')
+                    .select('*')
+                    .eq('org_id', orgId)
+                    .limit(1)
+                    .single();
                 console.log('Settings:', settings, settingsError);
                 if (settings) {
                     state.leagueName = settings.name;
                     state.venues = settings.venues || [];
                 }
 
-                // Load seasons
-                const { data: seasons } = await db.from('seasons').select('*').order('created_at', { ascending: false });
+                // Load seasons for this org
+                const { data: seasons } = await db.from('seasons')
+                    .select('*')
+                    .eq('org_id', orgId)
+                    .order('created_at', { ascending: false });
                 state.seasons = (seasons || []).map(s => ({
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
-                    isActive: s.is_active, createdAt: s.created_at
+                    isActive: s.is_active, createdAt: s.created_at, orgId: s.org_id
                 }));
                 
                 // Set current season to active one, or most recent
                 state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0] || null;
 
-                const { data: users, error: usersError } = await db.from('users').select('*');
+                const { data: users, error: usersError } = await db.from('users')
+                    .select('*')
+                    .eq('org_id', orgId);
                 console.log('Users:', users, usersError);
                 state.users = (users || []).map(u => ({
                     id: u.id, username: u.username, password: u.password, phone: u.phone,
                     role: u.role, teamId: u.team_id, playerId: u.player_id,
-                    createdAt: u.created_at, createdBy: u.created_by
+                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
                 }));
 
-                const { data: teams, error: teamsError } = await db.from('teams').select('*');
+                const { data: teams, error: teamsError } = await db.from('teams')
+                    .select('*')
+                    .eq('org_id', orgId);
                 console.log('Teams:', teams, teamsError);
                 state.teams = (teams || []).map(t => ({
                     id: t.id, name: t.name, venue: t.venue || '', captain: t.captain || '',
-                    phone: t.phone || '', players: t.players || []
+                    phone: t.phone || '', players: t.players || [], orgId: t.org_id
                 }));
 
                 // Load schedule for current season
                 await loadSeasonData();
 
                 state.initialized = true;
-                console.log('Data loaded:', { users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length, seasons: state.seasons.length });
+                console.log('Data loaded:', { org: orgId, users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length, seasons: state.seasons.length });
             } catch (error) {
                 console.error('Error loading data:', error);
                 state.initialized = true;
@@ -342,15 +364,18 @@
                 alert('Please enter a season name');
                 return false;
             }
+            if (!state.organization?.id) { alert('No organization loaded'); return false; }
+            
             showLoading();
             try {
-                // Deactivate all other seasons
-                await db.from('seasons').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+                // Deactivate all other seasons for this org
+                await db.from('seasons').update({ is_active: false }).eq('org_id', state.organization.id);
                 
                 // Create new active season
                 const { data, error } = await db.from('seasons').insert([{
                     name: name.trim(),
-                    is_active: true
+                    is_active: true,
+                    org_id: state.organization.id
                 }]).select().single();
                 
                 if (error) throw error;
@@ -361,7 +386,8 @@
                     startDate: data.start_date,
                     endDate: data.end_date,
                     isActive: data.is_active,
-                    createdAt: data.created_at
+                    createdAt: data.created_at,
+                    orgId: data.org_id
                 };
                 
                 state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
@@ -468,13 +494,89 @@
         // AUTH FUNCTIONS
         // ============================================
         async function login(username, password) {
-            const user = state.users.find(u => u.username === username && u.password === password);
-            if (user) {
+            showLoading();
+            try {
+                // Find user by username and password
+                const { data: users, error } = await db.from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('password', password)
+                    .limit(1);
+                
+                if (error) throw error;
+                if (!users || users.length === 0) {
+                    hideLoading();
+                    return false;
+                }
+                
+                const userData = users[0];
+                const user = {
+                    id: userData.id, username: userData.username, password: userData.password,
+                    phone: userData.phone, role: userData.role, teamId: userData.team_id,
+                    playerId: userData.player_id, createdAt: userData.created_at,
+                    createdBy: userData.created_by, orgId: userData.org_id
+                };
+                
+                // Load the user's organization
+                if (user.orgId) {
+                    const { data: org, error: orgError } = await db.from('organizations')
+                        .select('*')
+                        .eq('id', user.orgId)
+                        .single();
+                    
+                    if (orgError) throw orgError;
+                    
+                    state.organization = {
+                        id: org.id,
+                        name: org.name,
+                        slug: org.slug,
+                        subscriptionStatus: org.subscription_status,
+                        subscriptionTier: org.subscription_tier,
+                        billingInterval: org.billing_interval,
+                        trialEndsAt: org.trial_ends_at,
+                        maxTeams: org.max_teams,
+                        maxUsers: org.max_users,
+                        maxSeasons: org.max_seasons
+                    };
+                    
+                    // Check subscription status
+                    const isValid = checkSubscriptionValid();
+                    if (!isValid) {
+                        hideLoading();
+                        alert('Your subscription has expired. Please contact your administrator to renew.');
+                        return false;
+                    }
+                }
+                
                 state.currentUser = user;
                 localStorage.setItem('plm_session', JSON.stringify({ id: user.id }));
+                
+                // Load all org data
+                await loadAllData();
+                
                 render();
                 return true;
+            } catch (error) {
+                console.error('Login error:', error);
+                hideLoading();
+                return false;
             }
+        }
+        
+        function checkSubscriptionValid() {
+            if (!state.organization) return false;
+            
+            const status = state.organization.subscriptionStatus;
+            
+            // Active subscription
+            if (status === 'active') return true;
+            
+            // Valid trial
+            if (status === 'trial') {
+                const trialEnd = new Date(state.organization.trialEndsAt);
+                if (trialEnd > new Date()) return true;
+            }
+            
             return false;
         }
 
@@ -489,17 +591,18 @@
             if (!username || !password) { alert('Username and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
             if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
+            if (!state.organization?.id) { alert('No organization loaded'); return false; }
 
             showLoading();
             try {
-                const isFirstUser = state.users.length === 0;
-                // First user is admin, others default to player unless specified
-                const finalRole = isFirstUser ? 'admin' : (role || 'player');
+                // All users are players unless specified
+                const finalRole = role || 'player';
                 
                 const { data, error } = await db.from('users').insert([{
                     username, password, phone,
                     role: finalRole,
                     team_id: teamId || null,
+                    org_id: state.organization.id,
                     created_by: state.currentUser?.id || null
                 }]).select().single();
 
@@ -508,17 +611,12 @@
                 const user = {
                     id: data.id, username: data.username, password: data.password,
                     phone: data.phone, role: data.role, teamId: data.team_id,
-                    createdAt: data.created_at, createdBy: data.created_by
+                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
                 };
 
                 state.users = [...state.users, user];
 
-                if (isFirstUser) {
-                    alert('Admin account created!');
-                    await login(username, password);
-                } else {
-                    alert('User "' + username + '" created as ' + finalRole + '!');
-                }
+                alert('User "' + username + '" created as ' + finalRole + '!');
                 render();
                 return true;
             } catch (error) {
@@ -634,18 +732,20 @@
         // ============================================
         async function createTeam(name, venue, captain) {
             if (!name) { alert('Team name required'); return false; }
+            if (!state.organization?.id) { alert('No organization loaded'); return false; }
 
             showLoading();
             try {
                 const { data, error } = await db.from('teams').insert([{
-                    name, venue: venue || '', captain: captain || '', players: []
+                    name, venue: venue || '', captain: captain || '', players: [],
+                    org_id: state.organization.id
                 }]).select().single();
 
                 if (error) throw error;
 
                 const newTeam = {
                     id: data.id, name: data.name, venue: data.venue,
-                    captain: data.captain, players: data.players || []
+                    captain: data.captain, players: data.players || [], orgId: data.org_id
                 };
                 
                 state.teams = [...state.teams, newTeam];
@@ -771,10 +871,12 @@
             if (!startDate) { alert('Please select a start date'); return; }
             if (state.teams.length < 2) { alert('Need at least 2 teams'); return; }
             if (!state.currentSeason) { alert('Please create a season first'); return; }
+            if (!state.organization?.id) { alert('No organization loaded'); return; }
 
             showLoading();
             try {
                 const seasonId = state.currentSeason.id;
+                const orgId = state.organization.id;
                 
                 // Clear existing data for this season only
                 await db.from('matches').delete().eq('season_id', seasonId);
@@ -790,7 +892,8 @@
                     away_team_id: s.awayTeamId, venue: s.venue, is_bye: s.isBye,
                     half: s.half, is_position_night: s.isPositionNight,
                     position_home: s.positionHome, position_away: s.positionAway,
-                    season_id: seasonId
+                    season_id: seasonId,
+                    org_id: orgId
                 }));
 
                 const { data } = await db.from('schedule').insert(dbSchedule).select();
@@ -800,7 +903,7 @@
                     awayTeamId: s.away_team_id, venue: s.venue, isBye: s.is_bye,
                     half: s.half, isPositionNight: s.is_position_night,
                     positionHome: s.position_home, positionAway: s.position_away,
-                    seasonId: s.season_id
+                    seasonId: s.season_id, orgId: s.org_id
                 }));
 
                 state.matches = [];
@@ -983,20 +1086,24 @@
             if (state.submissions.find(s => s.scheduleId === sel && s.teamId === team)) {
                 alert('Your team already submitted'); return;
             }
+            
+            if (!state.organization?.id) { alert('No organization loaded'); return; }
+            const orgId = state.organization.id;
 
             showLoading();
             try {
                 const { data: subData } = await db.from('submissions').insert([{
                     schedule_id: sel, team_id: team, home_score: homeScore,
                     away_score: awayScore, matchups: matchups.map(m => ({ ...m })),
-                    season_id: seasonId
+                    season_id: seasonId,
+                    org_id: orgId
                 }]).select().single();
 
                 const newSub = {
                     id: subData.id, scheduleId: subData.schedule_id, teamId: subData.team_id,
                     homeScore: subData.home_score, awayScore: subData.away_score,
                     matchups: subData.matchups, timestamp: subData.created_at,
-                    seasonId: subData.season_id
+                    seasonId: subData.season_id, orgId: subData.org_id
                 };
 
                 state.submissions = [...state.submissions, newSub];
@@ -1008,14 +1115,15 @@
                         const { data: matchData } = await db.from('matches').insert([{
                             schedule_id: sel, home_score: homeScore, away_score: awayScore,
                             matchups: newSub.matchups, approved: true,
-                            season_id: seasonId
+                            season_id: seasonId,
+                            org_id: orgId
                         }]).select().single();
 
                         state.matches = [...state.matches, {
                             id: matchData.id, scheduleId: matchData.schedule_id,
                             homeScore: matchData.home_score, awayScore: matchData.away_score,
                             matchups: matchData.matchups, approved: true,
-                            seasonId: matchData.season_id
+                            seasonId: matchData.season_id, orgId: matchData.org_id
                         }];
 
                         await db.from('submissions').delete().eq('schedule_id', sel);
@@ -1160,12 +1268,15 @@
             try {
                 const { data } = await db.from('matches').insert([{
                     schedule_id: scheduleId, home_score: sub.homeScore,
-                    away_score: sub.awayScore, matchups: sub.matchups, approved: true
+                    away_score: sub.awayScore, matchups: sub.matchups, approved: true,
+                    season_id: state.currentSeason?.id,
+                    org_id: state.organization?.id
                 }]).select().single();
 
                 state.matches = [...state.matches, {
                     id: data.id, scheduleId: data.schedule_id, homeScore: data.home_score,
-                    awayScore: data.away_score, matchups: data.matchups, approved: true
+                    awayScore: data.away_score, matchups: data.matchups, approved: true,
+                    seasonId: data.season_id, orgId: data.org_id
                 }];
 
                 await db.from('submissions').delete().eq('schedule_id', scheduleId);
@@ -1218,14 +1329,16 @@
         // RENDER FUNCTIONS
         // ============================================
         function renderLoginScreen() {
-            const isFirstUser = state.users.length === 0;
+            // Check if this is first-time setup (no organization loaded)
+            const showSetup = !state.organization && state.initialized;
+            
             return `
                 <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
                     <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border-4 border-emerald-700">
                         <div class="text-center mb-8">
                             <div class="text-6xl mb-4">🏆</div>
                             <h1 class="text-4xl font-black text-slate-800 mb-2">Pool League</h1>
-                            <p class="text-slate-600">${isFirstUser ? 'Create Admin Account' : 'Sign In'}</p>
+                            <p class="text-slate-600">Sign In</p>
                             <p class="text-xs text-emerald-600 mt-2">☁️ Cloud-Synced</p>
                         </div>
                         
@@ -1233,16 +1346,13 @@
                         <div id="login-form" class="space-y-4">
                             <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            ${isFirstUser ? `<input type="tel" id="login-phone" placeholder="Phone (required)" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">` : ''}
                             <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
-                                ${isFirstUser ? 'Create Admin Account' : 'Sign In'}
+                                Sign In
                             </button>
-                            ${!isFirstUser ? `
                             <button onclick="showResetForm()" class="w-full text-sm text-emerald-600 hover:text-emerald-800 py-2">
                                 Forgot Password?
                             </button>
-                            ` : ''}
                         </div>
                         
                         <!-- Reset Password Form (hidden by default) -->
@@ -2388,12 +2498,14 @@
         window.handleLogin = async function() {
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
-            const phoneInput = document.getElementById('login-phone');
-            const phone = phoneInput ? phoneInput.value : '';
 
-            if (state.users.length === 0) {
-                await createAccount(username, password, phone);
-            } else if (!await login(username, password)) {
+            if (!username || !password) {
+                document.getElementById('login-error').textContent = 'Please enter username and password';
+                document.getElementById('login-error').classList.remove('hidden');
+                return;
+            }
+
+            if (!await login(username, password)) {
                 document.getElementById('login-error').textContent = 'Invalid credentials';
                 document.getElementById('login-error').classList.remove('hidden');
             }
@@ -2533,16 +2645,63 @@
         // INIT
         // ============================================
         async function init() {
-            render();
-            await loadAllData();
-
+            render(); // Show loading screen
+            
             const session = localStorage.getItem('plm_session');
             if (session) {
                 try {
                     const { id } = JSON.parse(session);
-                    const user = state.users.find(u => u.id === id);
-                    if (user) state.currentUser = user;
+                    
+                    // Load user and their organization
+                    const { data: userData, error } = await db.from('users')
+                        .select('*')
+                        .eq('id', id)
+                        .single();
+                    
+                    if (userData && !error) {
+                        const user = {
+                            id: userData.id, username: userData.username, password: userData.password,
+                            phone: userData.phone, role: userData.role, teamId: userData.team_id,
+                            playerId: userData.player_id, createdAt: userData.created_at,
+                            createdBy: userData.created_by, orgId: userData.org_id
+                        };
+                        
+                        // Load organization
+                        if (user.orgId) {
+                            const { data: org } = await db.from('organizations')
+                                .select('*')
+                                .eq('id', user.orgId)
+                                .single();
+                            
+                            if (org) {
+                                state.organization = {
+                                    id: org.id,
+                                    name: org.name,
+                                    slug: org.slug,
+                                    subscriptionStatus: org.subscription_status,
+                                    subscriptionTier: org.subscription_tier,
+                                    billingInterval: org.billing_interval,
+                                    trialEndsAt: org.trial_ends_at,
+                                    maxTeams: org.max_teams,
+                                    maxUsers: org.max_users,
+                                    maxSeasons: org.max_seasons
+                                };
+                                
+                                // Check subscription
+                                if (checkSubscriptionValid()) {
+                                    state.currentUser = user;
+                                    await loadAllData();
+                                } else {
+                                    localStorage.removeItem('plm_session');
+                                    alert('Your subscription has expired. Please contact your administrator to renew.');
+                                }
+                            }
+                        }
+                    } else {
+                        localStorage.removeItem('plm_session');
+                    }
                 } catch (e) {
+                    console.error('Session restore error:', e);
                     localStorage.removeItem('plm_session');
                 }
             }
