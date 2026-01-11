@@ -3,545 +3,452 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pool League Manager - Manage Your Pool League Online</title>
-    <meta name="description" content="The easiest way to manage your pool or billiards league. Schedule generation, score tracking, standings, and more.">
+    <title>Upgrade Your Plan - Pool League Manager</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://js.stripe.com/v3/"></script>
     
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #064e3b 0%, #0f766e 50%, #115e59 100%);
         }
-        .feature-card:hover {
+        .plan-card {
+            transition: all 0.3s ease;
+        }
+        .plan-card:hover {
             transform: translateY(-4px);
         }
-        .pricing-card:hover {
-            transform: scale(1.02);
-        }
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-        }
-        .float-animation {
-            animation: float 3s ease-in-out infinite;
+        .plan-card.selected {
+            border-color: #059669;
+            box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
         }
     </style>
 </head>
-<body class="bg-slate-50">
-    <!-- Navigation -->
-    <nav class="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-sm shadow-sm z-50">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <span class="text-3xl">🎱</span>
-                <span class="text-xl font-black text-slate-800">Pool League Manager</span>
-            </div>
-            <div class="flex items-center gap-4">
-                <a href="#features" class="text-slate-600 hover:text-emerald-600 font-medium hidden sm:block">Features</a>
-                <a href="#pricing" class="text-slate-600 hover:text-emerald-600 font-medium hidden sm:block">Pricing</a>
-                <a href="app.html" class="text-emerald-600 hover:text-emerald-700 font-semibold">Sign In</a>
-                <a href="#signup" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors">
-                    Start Free Trial
-                </a>
-            </div>
+<body class="bg-slate-100 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg text-white py-6 px-4">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <a href="app.html" class="flex items-center gap-2">
+                <span class="text-2xl">🎱</span>
+                <span class="text-xl font-bold">Pool League Manager</span>
+            </a>
+            <a href="app.html" class="text-emerald-200 hover:text-white">← Back to App</a>
         </div>
-    </nav>
+    </header>
 
-    <!-- Hero Section -->
-    <section class="gradient-bg pt-32 pb-20 px-4">
-        <div class="max-w-6xl mx-auto">
-            <div class="grid md:grid-cols-2 gap-12 items-center">
-                <div class="text-white">
-                    <h1 class="text-4xl md:text-5xl font-black mb-6 leading-tight">
-                        Manage Your Pool League 
-                        <span class="text-yellow-300">Like a Pro</span>
-                    </h1>
-                    <p class="text-xl text-emerald-100 mb-8">
-                        Stop juggling spreadsheets. Get automatic schedule generation, real-time standings, 
-                        player stats, and score tracking — all in one place.
-                    </p>
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        <a href="#signup" class="px-8 py-4 bg-yellow-400 text-slate-900 font-black rounded-xl text-lg hover:bg-yellow-300 transition-colors text-center">
-                            Start 14-Day Free Trial →
-                        </a>
-                        <a href="#features" class="px-8 py-4 bg-white/10 text-white font-bold rounded-xl text-lg hover:bg-white/20 transition-colors text-center border-2 border-white/30">
-                            See Features
-                        </a>
-                    </div>
-                    <p class="mt-6 text-emerald-200 text-sm">✓ No credit card required &nbsp;✓ Cancel anytime</p>
-                </div>
-                <div class="relative hidden md:block">
-                    <div class="bg-white rounded-2xl shadow-2xl p-6 float-animation">
-                        <div class="bg-emerald-600 text-white rounded-xl p-4 mb-4">
-                            <h3 class="font-bold text-lg">🏆 League Standings</h3>
-                        </div>
-                        <div class="space-y-3">
-                            <div class="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
-                                <span class="font-bold">1. Eight Ball Masters</span>
-                                <span class="text-emerald-600 font-bold">12-2</span>
-                            </div>
-                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                <span class="font-semibold">2. Cue Crew</span>
-                                <span class="text-slate-600">10-4</span>
-                            </div>
-                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                <span class="font-semibold">3. Pocket Rockets</span>
-                                <span class="text-slate-600">9-5</span>
-                            </div>
-                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                <span class="font-semibold">4. Break & Run</span>
-                                <span class="text-slate-600">8-6</span>
-                            </div>
-                        </div>
-                    </div>
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-4 py-12">
+        <!-- Trial Banner (shown if on trial) -->
+        <div id="trial-banner" class="hidden bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-8">
+            <div class="flex items-start gap-4">
+                <div class="text-3xl">⏰</div>
+                <div>
+                    <h2 class="font-bold text-yellow-800 text-lg">Your free trial <span id="trial-status"></span></h2>
+                    <p class="text-yellow-700 mt-1" id="trial-message"></p>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- Social Proof -->
-    <section class="py-12 bg-white border-b">
-        <div class="max-w-6xl mx-auto px-4 text-center">
-            <p class="text-slate-500 mb-6">Trusted by pool leagues everywhere</p>
-            <div class="flex flex-wrap justify-center gap-8 items-center opacity-60">
-                <span class="text-2xl font-black text-slate-400">🎱 APA Leagues</span>
-                <span class="text-2xl font-black text-slate-400">🏆 Bar Leagues</span>
-                <span class="text-2xl font-black text-slate-400">🎯 Club Leagues</span>
-            </div>
-        </div>
-    </section>
-
-    <!-- Features Section -->
-    <section id="features" class="py-20 px-4">
-        <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
-                    Everything You Need to Run Your League
-                </h2>
-                <p class="text-xl text-slate-600 max-w-2xl mx-auto">
-                    From schedule creation to final standings, we've got you covered.
-                </p>
-            </div>
-
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">📅</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Auto Schedule Generation</h3>
-                    <p class="text-slate-600">
-                        Generate complete round-robin schedules with one click. Handles byes, 
-                        home/away balance, and venue conflicts automatically.
-                    </p>
-                </div>
-
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">📊</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Live Standings</h3>
-                    <p class="text-slate-600">
-                        Real-time team and player statistics. Win percentages, games won/lost, 
-                        and automatic ranking updates.
-                    </p>
-                </div>
-
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">📱</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Easy Score Entry</h3>
-                    <p class="text-slate-600">
-                        Captains submit scores from their phone. Dual-submission system ensures accuracy 
-                        with automatic conflict detection.
-                    </p>
-                </div>
-
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">👥</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Team Management</h3>
-                    <p class="text-slate-600">
-                        Manage rosters, assign captains, track player stats. Each captain gets 
-                        their own login to manage their team.
-                    </p>
-                </div>
-
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">🏆</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Position Nights</h3>
-                    <p class="text-slate-600">
-                        Automatic playoff matchups based on standings. 1st vs 2nd, 3rd vs 4th, 
-                        and so on — calculated automatically.
-                    </p>
-                </div>
-
-                <div class="feature-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-100 transition-all duration-300">
-                    <div class="text-5xl mb-4">📜</div>
-                    <h3 class="text-xl font-bold text-slate-800 mb-3">Season History</h3>
-                    <p class="text-slate-600">
-                        Keep records of past seasons. Switch between seasons easily and 
-                        maintain complete historical data.
-                    </p>
+        <!-- Current Plan Banner (shown if already subscribed) -->
+        <div id="subscribed-banner" class="hidden bg-emerald-50 border-2 border-emerald-300 rounded-xl p-6 mb-8">
+            <div class="flex items-start gap-4">
+                <div class="text-3xl">✅</div>
+                <div>
+                    <h2 class="font-bold text-emerald-800 text-lg">You're on the <span id="current-plan" class="capitalize"></span> plan</h2>
+                    <p class="text-emerald-700 mt-1">Your subscription is active. Thank you for supporting Pool League Manager!</p>
+                    <button onclick="manageBilling()" class="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700">
+                        Manage Billing →
+                    </button>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- How It Works -->
-    <section class="py-20 px-4 bg-slate-100">
-        <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
-                    Up and Running in Minutes
-                </h2>
-            </div>
-
-            <div class="grid md:grid-cols-4 gap-8">
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">1</div>
-                    <h3 class="font-bold text-lg mb-2">Sign Up</h3>
-                    <p class="text-slate-600">Create your league in 30 seconds</p>
-                </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">2</div>
-                    <h3 class="font-bold text-lg mb-2">Add Teams</h3>
-                    <p class="text-slate-600">Enter your teams and players</p>
-                </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">3</div>
-                    <h3 class="font-bold text-lg mb-2">Generate Schedule</h3>
-                    <p class="text-slate-600">One click creates your full season</p>
-                </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4">4</div>
-                    <h3 class="font-bold text-lg mb-2">Play!</h3>
-                    <p class="text-slate-600">Track scores and watch standings update</p>
-                </div>
-            </div>
+        <!-- Not Logged In Banner -->
+        <div id="login-banner" class="hidden bg-slate-50 border-2 border-slate-300 rounded-xl p-6 mb-8 text-center">
+            <div class="text-4xl mb-4">🔒</div>
+            <h2 class="font-bold text-slate-800 text-lg">Please sign in to upgrade</h2>
+            <p class="text-slate-600 mt-1 mb-4">You need to be logged in to manage your subscription.</p>
+            <a href="app.html" class="inline-block px-6 py-3 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700">
+                Sign In →
+            </a>
         </div>
-    </section>
 
-    <!-- Pricing Section -->
-    <section id="pricing" class="py-20 px-4">
-        <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-4">
-                    Simple, Affordable Pricing
-                </h2>
-                <p class="text-xl text-slate-600">
-                    Start free, upgrade when you're ready.
-                </p>
+        <!-- Pricing Section -->
+        <div id="pricing-section" class="hidden">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-black text-slate-800 mb-2">Choose Your Plan</h1>
+                <p class="text-slate-600">Unlock the full power of Pool League Manager</p>
             </div>
 
-            <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <!-- Billing Toggle -->
+            <div class="flex justify-center mb-8">
+                <div class="bg-white rounded-full p-1 shadow-md inline-flex">
+                    <button id="btn-monthly" onclick="setBilling('monthly')" 
+                        class="px-6 py-2 rounded-full font-semibold transition-colors">
+                        Monthly
+                    </button>
+                    <button id="btn-annual" onclick="setBilling('annual')" 
+                        class="px-6 py-2 rounded-full font-semibold transition-colors">
+                        Annual <span class="text-emerald-600 text-sm">(Save 10%)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Plan Cards -->
+            <div class="grid md:grid-cols-2 gap-6 mb-8">
                 <!-- Starter Plan -->
-                <div class="pricing-card bg-white rounded-2xl p-8 shadow-lg border-2 border-slate-200 transition-all duration-300">
-                    <div class="text-center mb-6">
-                        <h3 class="text-2xl font-bold text-slate-800">Starter</h3>
-                        <div class="mt-4">
-                            <span class="text-5xl font-black text-slate-800">$19</span>
-                            <span class="text-slate-500">/month</span>
+                <div id="card-starter" onclick="selectPlan('starter')" 
+                    class="plan-card bg-white rounded-2xl p-8 border-2 border-slate-200 cursor-pointer">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-2xl font-bold text-slate-800">Starter</h3>
+                            <p class="text-slate-500">For small leagues</p>
                         </div>
-                        <p class="text-sm text-slate-500 mt-2">or $205/year (save 10%)</p>
+                        <div id="starter-check" class="hidden w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
                     </div>
-                    <ul class="space-y-3 mb-8">
-                        <li class="flex items-center gap-3">
-                            <span class="text-emerald-500">✓</span>
-                            <span>Up to 12 teams</span>
+                    <div class="mb-6">
+                        <span id="starter-price" class="text-4xl font-black text-slate-800">$19</span>
+                        <span id="starter-interval" class="text-slate-500">/month</span>
+                    </div>
+                    <ul class="space-y-3 text-slate-600">
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Up to 12 teams
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-emerald-500">✓</span>
-                            <span>Up to 100 players</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Up to 100 players
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-emerald-500">✓</span>
-                            <span>10 seasons of history</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> 10 seasons of history
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-emerald-500">✓</span>
-                            <span>Auto schedule generation</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Auto schedule generation
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-emerald-500">✓</span>
-                            <span>Email support</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Email support
                         </li>
                     </ul>
-                    <a href="#signup" class="block w-full py-3 text-center bg-slate-100 text-slate-800 font-bold rounded-xl hover:bg-slate-200 transition-colors">
-                        Start Free Trial
-                    </a>
                 </div>
 
                 <!-- Pro Plan -->
-                <div class="pricing-card bg-emerald-600 rounded-2xl p-8 shadow-lg border-2 border-emerald-500 transition-all duration-300 relative">
-                    <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                        <span class="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold">MOST POPULAR</span>
+                <div id="card-pro" onclick="selectPlan('pro')" 
+                    class="plan-card bg-white rounded-2xl p-8 border-2 border-slate-200 cursor-pointer relative">
+                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                        <span class="bg-emerald-500 text-white px-3 py-1 rounded-full text-sm font-bold">RECOMMENDED</span>
                     </div>
-                    <div class="text-center mb-6">
-                        <h3 class="text-2xl font-bold text-white">Pro</h3>
-                        <div class="mt-4">
-                            <span class="text-5xl font-black text-white">$39</span>
-                            <span class="text-emerald-200">/month</span>
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-2xl font-bold text-slate-800">Pro</h3>
+                            <p class="text-slate-500">For growing leagues</p>
                         </div>
-                        <p class="text-sm text-emerald-200 mt-2">or $421/year (save 10%)</p>
+                        <div id="pro-check" class="hidden w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
                     </div>
-                    <ul class="space-y-3 mb-8 text-white">
-                        <li class="flex items-center gap-3">
-                            <span class="text-yellow-300">✓</span>
-                            <span>Up to 50 teams</span>
+                    <div class="mb-6">
+                        <span id="pro-price" class="text-4xl font-black text-slate-800">$39</span>
+                        <span id="pro-interval" class="text-slate-500">/month</span>
+                    </div>
+                    <ul class="space-y-3 text-slate-600">
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Up to 50 teams
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-yellow-300">✓</span>
-                            <span>Up to 500 players</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Up to 500 players
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-yellow-300">✓</span>
-                            <span>50 seasons of history</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> 50 seasons of history
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-yellow-300">✓</span>
-                            <span>Everything in Starter</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Everything in Starter
                         </li>
-                        <li class="flex items-center gap-3">
-                            <span class="text-yellow-300">✓</span>
-                            <span>Priority support</span>
+                        <li class="flex items-center gap-2">
+                            <span class="text-emerald-500">✓</span> Priority support
                         </li>
                     </ul>
-                    <a href="#signup" class="block w-full py-3 text-center bg-white text-emerald-600 font-bold rounded-xl hover:bg-emerald-50 transition-colors">
-                        Start Free Trial
-                    </a>
                 </div>
             </div>
 
-            <p class="text-center text-slate-500 mt-8">
-                All plans include a 14-day free trial. No credit card required.
-            </p>
-        </div>
-    </section>
-
-    <!-- Signup Section -->
-    <section id="signup" class="py-20 px-4 gradient-bg">
-        <div class="max-w-md mx-auto">
-            <div class="bg-white rounded-2xl shadow-2xl p-8">
-                <div class="text-center mb-8">
-                    <div class="text-5xl mb-4">🎱</div>
-                    <h2 class="text-2xl font-black text-slate-800">Start Your Free Trial</h2>
-                    <p class="text-slate-600 mt-2">14 days free, no credit card required</p>
-                </div>
-
-                <form id="signup-form" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">League Name</label>
-                        <input type="text" id="league-name" placeholder="e.g., Downtown Pool League" required
-                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Your Name</label>
-                        <input type="text" id="admin-name" placeholder="Your full name" required
-                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Email</label>
-                        <input type="email" id="admin-email" placeholder="you@example.com" required
-                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
-                        <input type="tel" id="admin-phone" placeholder="(555) 123-4567" required
-                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Password</label>
-                        <input type="password" id="admin-password" placeholder="At least 6 characters" required minlength="6"
-                            class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none">
-                    </div>
-
-                    <div id="signup-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"></div>
-                    <div id="signup-success" class="hidden bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm"></div>
-
-                    <button type="submit" id="signup-btn"
-                        class="w-full py-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-lg">
-                        Create My League →
-                    </button>
-                </form>
-
-                <p class="text-center text-sm text-slate-500 mt-6">
-                    Already have an account? <a href="app.html" class="text-emerald-600 font-semibold hover:underline">Sign in</a>
+            <!-- Checkout Button -->
+            <div class="text-center">
+                <button id="checkout-btn" onclick="checkout()" disabled
+                    class="px-12 py-4 bg-emerald-600 text-white font-bold text-lg rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Select a plan to continue
+                </button>
+                <p class="text-slate-500 text-sm mt-4">
+                    🔒 Secure checkout powered by Stripe
                 </p>
             </div>
         </div>
-    </section>
+    </main>
 
     <!-- Footer -->
-    <footer class="bg-slate-900 text-slate-400 py-12 px-4">
-        <div class="max-w-6xl mx-auto">
-            <div class="flex flex-col md:flex-row justify-between items-center gap-6">
-                <div class="flex items-center gap-2">
-                    <span class="text-2xl">🎱</span>
-                    <span class="text-lg font-bold text-white">Pool League Manager</span>
-                </div>
-                <div class="flex gap-6 text-sm">
-                    <a href="#features" class="hover:text-white">Features</a>
-                    <a href="#pricing" class="hover:text-white">Pricing</a>
-                    <a href="app.html" class="hover:text-white">Sign In</a>
-                </div>
-            </div>
-            <div class="border-t border-slate-800 mt-8 pt-8 text-center text-sm">
-                <p>© 2025 Pool League Manager. All rights reserved.</p>
-            </div>
-        </div>
+    <footer class="text-center text-slate-500 text-sm py-8">
+        <p>Questions? Contact us at support@poolleaguemanager.com</p>
     </footer>
 
     <script>
-        // Supabase configuration
+        // ============================================
+        // CONFIGURATION
+        // ============================================
         const SUPABASE_URL = 'https://hprdhlletatixqysqegi.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcmRobGxldGF0aXhxeXNxZWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTU1NDMsImV4cCI6MjA4MzY3MTU0M30._wrv6ONjG3JRkpA1FDPFkKMSn0bi6vhMiR0UZB40IRk';
+        const STRIPE_PUBLISHABLE_KEY = 'pk_test_51SoTE2DEuvjooNQ2C04FBdpjw5Drt66KyhFwa2I2mm0ml9a9l3fb5oO5BBpaDOBzQNtxYy90DAFpgRFBXxMz1vuQ003ScT41Nj';
         
+        // Stripe Price IDs
+        const PRICE_IDS = {
+            starter: {
+                monthly: 'price_1SoTI0DEuvjooNQ2Nonqm05j',
+                annual: 'price_1SoTIWDEuvjooNQ2ccqt3rDa'
+            },
+            pro: {
+                monthly: 'price_1SoTSEDEuvjooNQ22hx7yVb1',
+                annual: 'price_1SoTSeDEuvjooNQ28XV4iKDm'
+            }
+        };
+
+        const PRICES = {
+            starter: { monthly: 19, annual: 205 },
+            pro: { monthly: 39, annual: 421 }
+        };
+
+        // Initialize clients
         const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
 
-        // Handle signup
-        document.getElementById('signup-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const btn = document.getElementById('signup-btn');
-            const errorDiv = document.getElementById('signup-error');
-            const successDiv = document.getElementById('signup-success');
-            
-            // Reset messages
-            errorDiv.classList.add('hidden');
-            successDiv.classList.add('hidden');
-            
-            // Get form values
-            const leagueName = document.getElementById('league-name').value.trim();
-            const adminName = document.getElementById('admin-name').value.trim();
-            const adminEmail = document.getElementById('admin-email').value.trim();
-            const adminPhone = document.getElementById('admin-phone').value.trim();
-            const adminPassword = document.getElementById('admin-password').value;
-            
-            // Validation
-            if (!leagueName || !adminName || !adminEmail || !adminPhone || !adminPassword) {
-                errorDiv.textContent = 'Please fill in all fields';
-                errorDiv.classList.remove('hidden');
+        // State
+        let currentUser = null;
+        let currentOrg = null;
+        let selectedPlan = null;
+        let billingInterval = 'monthly';
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        async function init() {
+            // Check for logged in user
+            const session = localStorage.getItem('plm_session');
+            if (!session) {
+                showLoginBanner();
                 return;
             }
-            
-            if (adminPassword.length < 6) {
-                errorDiv.textContent = 'Password must be at least 6 characters';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
-            
-            // Clean phone number
-            const cleanPhone = adminPhone.replace(/\D/g, '');
-            if (cleanPhone.length < 10) {
-                errorDiv.textContent = 'Please enter a valid phone number';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
-            
-            // Disable button
-            btn.disabled = true;
-            btn.textContent = 'Creating your league...';
-            
+
             try {
-                // Check if email already exists
-                const { data: existingUser } = await db.from('users')
-                    .select('id')
-                    .eq('username', adminEmail)
-                    .limit(1);
+                const { id } = JSON.parse(session);
                 
-                if (existingUser && existingUser.length > 0) {
-                    throw new Error('An account with this email already exists. Please sign in instead.');
+                // Load user
+                const { data: userData, error: userError } = await db.from('users')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+                
+                if (userError || !userData) {
+                    showLoginBanner();
+                    return;
                 }
                 
-                // Create slug from league name
-                const slug = leagueName.toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/^-|-$/g, '')
-                    .substring(0, 50);
-                
-                // Check if slug exists
-                const { data: existingOrg } = await db.from('organizations')
-                    .select('id')
-                    .eq('slug', slug)
-                    .limit(1);
-                
-                let finalSlug = slug;
-                if (existingOrg && existingOrg.length > 0) {
-                    finalSlug = slug + '-' + Date.now().toString().slice(-4);
-                }
-                
-                // Calculate trial end date (14 days from now)
-                const trialEndsAt = new Date();
-                trialEndsAt.setDate(trialEndsAt.getDate() + 14);
-                
-                // 1. Create organization
-                const { data: orgData, error: orgError } = await db.from('organizations').insert([{
-                    name: leagueName,
-                    slug: finalSlug,
-                    subscription_status: 'trial',
-                    subscription_tier: 'trial',
-                    trial_ends_at: trialEndsAt.toISOString(),
-                    max_teams: 12,
-                    max_users: 100,
-                    max_seasons: 2
-                }]).select().single();
-                
-                if (orgError) throw orgError;
-                
-                // 2. Create admin user
-                const { data: userData, error: userError } = await db.from('users').insert([{
-                    username: adminEmail,
-                    password: adminPassword,
-                    phone: cleanPhone,
-                    role: 'admin',
-                    org_id: orgData.id
-                }]).select().single();
-                
-                if (userError) {
-                    // Rollback: delete the org if user creation fails
-                    await db.from('organizations').delete().eq('id', orgData.id);
-                    throw userError;
-                }
-                
-                // 3. Update organization with owner_id
-                await db.from('organizations').update({ owner_id: userData.id }).eq('id', orgData.id);
-                
-                // 4. Create default league settings
-                await db.from('league_settings').insert([{
-                    name: leagueName,
-                    org_id: orgData.id,
-                    venues: []
-                }]);
-                
-                // Success!
-                successDiv.innerHTML = `
-                    <strong>🎉 Welcome to Pool League Manager!</strong><br>
-                    Your league "${leagueName}" has been created.<br><br>
-                    <a href="app.html" class="text-emerald-600 font-bold underline">Click here to sign in →</a>
-                `;
-                successDiv.classList.remove('hidden');
-                
-                // Clear form
-                document.getElementById('signup-form').reset();
-                
-            } catch (error) {
-                console.error('Signup error:', error);
-                errorDiv.textContent = error.message || 'An error occurred. Please try again.';
-                errorDiv.classList.remove('hidden');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Create My League →';
-            }
-        });
+                currentUser = userData;
 
-        // Smooth scroll for anchor links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Load organization
+                if (userData.org_id) {
+                    const { data: orgData, error: orgError } = await db.from('organizations')
+                        .select('*')
+                        .eq('id', userData.org_id)
+                        .single();
+                    
+                    if (orgData) {
+                        currentOrg = orgData;
+                        
+                        // Check subscription status
+                        if (orgData.subscription_status === 'active') {
+                            showSubscribedBanner(orgData.subscription_tier);
+                        } else if (orgData.subscription_status === 'trial') {
+                            showTrialBanner(orgData.trial_ends_at);
+                            showPricingSection();
+                        } else {
+                            // Expired or canceled
+                            showTrialBanner(orgData.trial_ends_at, true);
+                            showPricingSection();
+                        }
+                    }
                 }
-            });
-        });
+            } catch (e) {
+                console.error('Init error:', e);
+                showLoginBanner();
+            }
+        }
+
+        // ============================================
+        // UI FUNCTIONS
+        // ============================================
+        function showLoginBanner() {
+            document.getElementById('login-banner').classList.remove('hidden');
+        }
+
+        function showTrialBanner(trialEndsAt, expired = false) {
+            const banner = document.getElementById('trial-banner');
+            const status = document.getElementById('trial-status');
+            const message = document.getElementById('trial-message');
+            
+            const endDate = new Date(trialEndsAt);
+            const now = new Date();
+            const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+            
+            if (expired || daysLeft <= 0) {
+                status.textContent = 'has expired';
+                message.textContent = 'Upgrade now to continue using Pool League Manager.';
+                banner.classList.remove('bg-yellow-50', 'border-yellow-300');
+                banner.classList.add('bg-red-50', 'border-red-300');
+                status.classList.add('text-red-800');
+            } else if (daysLeft <= 3) {
+                status.textContent = `expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
+                message.textContent = 'Upgrade now to avoid any interruption to your service.';
+            } else {
+                status.textContent = `has ${daysLeft} days remaining`;
+                message.textContent = 'Upgrade anytime to unlock your full potential.';
+            }
+            
+            banner.classList.remove('hidden');
+        }
+
+        function showSubscribedBanner(tier) {
+            document.getElementById('current-plan').textContent = tier;
+            document.getElementById('subscribed-banner').classList.remove('hidden');
+            // Still show pricing section for upgrades/downgrades
+            document.getElementById('pricing-section').classList.remove('hidden');
+        }
+
+        function showPricingSection() {
+            document.getElementById('pricing-section').classList.remove('hidden');
+            setBilling('monthly');
+        }
+
+        function setBilling(interval) {
+            billingInterval = interval;
+            
+            // Update toggle buttons
+            const btnMonthly = document.getElementById('btn-monthly');
+            const btnAnnual = document.getElementById('btn-annual');
+            
+            if (interval === 'monthly') {
+                btnMonthly.classList.add('bg-emerald-600', 'text-white');
+                btnMonthly.classList.remove('text-slate-600');
+                btnAnnual.classList.remove('bg-emerald-600', 'text-white');
+                btnAnnual.classList.add('text-slate-600');
+            } else {
+                btnAnnual.classList.add('bg-emerald-600', 'text-white');
+                btnAnnual.classList.remove('text-slate-600');
+                btnMonthly.classList.remove('bg-emerald-600', 'text-white');
+                btnMonthly.classList.add('text-slate-600');
+            }
+            
+            // Update prices
+            document.getElementById('starter-price').textContent = '$' + PRICES.starter[interval];
+            document.getElementById('starter-interval').textContent = interval === 'monthly' ? '/month' : '/year';
+            document.getElementById('pro-price').textContent = '$' + PRICES.pro[interval];
+            document.getElementById('pro-interval').textContent = interval === 'monthly' ? '/month' : '/year';
+            
+            updateCheckoutButton();
+        }
+
+        function selectPlan(plan) {
+            selectedPlan = plan;
+            
+            // Update card styles
+            const starterCard = document.getElementById('card-starter');
+            const proCard = document.getElementById('card-pro');
+            const starterCheck = document.getElementById('starter-check');
+            const proCheck = document.getElementById('pro-check');
+            
+            starterCard.classList.remove('selected', 'border-emerald-500');
+            proCard.classList.remove('selected', 'border-emerald-500');
+            starterCheck.classList.add('hidden');
+            proCheck.classList.add('hidden');
+            
+            if (plan === 'starter') {
+                starterCard.classList.add('selected', 'border-emerald-500');
+                starterCheck.classList.remove('hidden');
+                starterCheck.classList.add('flex');
+            } else {
+                proCard.classList.add('selected', 'border-emerald-500');
+                proCheck.classList.remove('hidden');
+                proCheck.classList.add('flex');
+            }
+            
+            updateCheckoutButton();
+        }
+
+        function updateCheckoutButton() {
+            const btn = document.getElementById('checkout-btn');
+            
+            if (selectedPlan) {
+                const price = PRICES[selectedPlan][billingInterval];
+                const interval = billingInterval === 'monthly' ? 'mo' : 'yr';
+                btn.textContent = `Upgrade to ${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} - $${price}/${interval}`;
+                btn.disabled = false;
+            } else {
+                btn.textContent = 'Select a plan to continue';
+                btn.disabled = true;
+            }
+        }
+
+        // ============================================
+        // CHECKOUT
+        // ============================================
+        async function checkout() {
+            if (!selectedPlan || !currentUser || !currentOrg) {
+                alert('Please select a plan');
+                return;
+            }
+
+            const btn = document.getElementById('checkout-btn');
+            btn.disabled = true;
+            btn.textContent = 'Redirecting to checkout...';
+
+            try {
+                const priceId = PRICE_IDS[selectedPlan][billingInterval];
+                
+                // Create Stripe Checkout Session via Supabase Edge Function
+                // For now, we'll use Stripe's client-only checkout (Payment Links alternative)
+                // In production, you'd create a checkout session server-side
+                
+                // Redirect to Stripe Checkout
+                const { error } = await stripe.redirectToCheckout({
+                    lineItems: [{ price: priceId, quantity: 1 }],
+                    mode: 'subscription',
+                    successUrl: window.location.origin + '/app.html?checkout=success&plan=' + selectedPlan,
+                    cancelUrl: window.location.origin + '/pricing.html?checkout=canceled',
+                    clientReferenceId: currentOrg.id, // Pass org ID to identify in webhook
+                    customerEmail: currentUser.username, // Pre-fill email
+                });
+
+                if (error) {
+                    throw error;
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                alert('Error starting checkout: ' + error.message);
+                btn.disabled = false;
+                updateCheckoutButton();
+            }
+        }
+
+        async function manageBilling() {
+            // In production, this would redirect to Stripe Customer Portal
+            // For now, show a message
+            alert('Billing management coming soon!\n\nTo manage your subscription, contact support@poolleaguemanager.com');
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+        init();
     </script>
 </body>
 </html>
