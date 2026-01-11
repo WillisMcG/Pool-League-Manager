@@ -151,6 +151,7 @@
             showGenSchedule: false,
             showManageVenues: false,
             showManageSeasons: false,
+            showArchivedSeasons: false,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -206,11 +207,13 @@
                     .order('created_at', { ascending: false });
                 state.seasons = (seasons || []).map(s => ({
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
-                    isActive: s.is_active, createdAt: s.created_at, orgId: s.org_id
+                    isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id
                 }));
                 
-                // Set current season to active one, or most recent
-                state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0] || null;
+                // Set current season to active non-archived one, or most recent non-archived
+                const activeNonArchived = state.seasons.find(s => s.isActive && !s.isArchived);
+                const anyNonArchived = state.seasons.find(s => !s.isArchived);
+                state.currentSeason = activeNonArchived || anyNonArchived || state.seasons[0] || null;
 
                 const { data: users, error: usersError } = await db.from('users')
                     .select('*')
@@ -474,13 +477,6 @@
             const season = state.seasons.find(s => s.id === seasonId);
             if (!season) return;
             
-            if (state.seasons.length === 1) {
-                alert('Cannot delete the only season');
-                return;
-            }
-            
-            if (!confirm('Delete season "' + season.name + '" and all its schedule/match data? This cannot be undone!')) return;
-            
             showLoading();
             try {
                 // Delete all data for this season
@@ -493,11 +489,15 @@
                 
                 // If we deleted the current season, switch to another
                 if (state.currentSeason?.id === seasonId) {
-                    state.currentSeason = state.seasons.find(s => s.isActive) || state.seasons[0];
-                    await loadSeasonData();
+                    const activeSeason = state.seasons.find(s => s.isActive && !s.isArchived);
+                    const anySeason = state.seasons.find(s => !s.isArchived) || state.seasons[0];
+                    state.currentSeason = activeSeason || anySeason;
+                    if (state.currentSeason) {
+                        await loadSeasonData();
+                    }
                 }
                 
-                alert('Season deleted');
+                alert('Season deleted permanently.');
                 render();
             } catch (error) {
                 console.error('Error deleting season:', error);
@@ -507,42 +507,110 @@
             }
         }
 
-        // Confirm delete with extra safety
-        async function confirmDeleteSeason(seasonId, seasonName) {
-            if (state.seasons.length <= 1) {
-                alert('Cannot delete the only season. Create a new season first.');
-                return;
-            }
-            
+        // Archive a season (hide it but keep data)
+        async function archiveSeason(seasonId) {
             const season = state.seasons.find(s => s.id === seasonId);
             if (!season) return;
             
-            // Check if season has matches
-            const { data: matchCount } = await db.from('matches')
-                .select('id', { count: 'exact', head: true })
+            showLoading();
+            try {
+                const { error } = await db.from('seasons')
+                    .update({ is_archived: true, is_active: false })
+                    .eq('id', seasonId);
+                
+                if (error) throw error;
+                
+                season.isArchived = true;
+                season.isActive = false;
+                
+                // If we archived the current season, switch to another
+                if (state.currentSeason?.id === seasonId) {
+                    const activeSeason = state.seasons.find(s => s.isActive && !s.isArchived);
+                    const anySeason = state.seasons.find(s => !s.isArchived);
+                    state.currentSeason = activeSeason || anySeason;
+                    if (state.currentSeason) {
+                        await loadSeasonData();
+                    }
+                }
+                
+                alert(`Season "${season.name}" has been archived. You can view archived seasons in Settings.`);
+                render();
+            } catch (error) {
+                console.error('Error archiving season:', error);
+                alert('Error archiving season');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Unarchive a season
+        async function unarchiveSeason(seasonId) {
+            const season = state.seasons.find(s => s.id === seasonId);
+            if (!season) return;
+            
+            showLoading();
+            try {
+                const { error } = await db.from('seasons')
+                    .update({ is_archived: false })
+                    .eq('id', seasonId);
+                
+                if (error) throw error;
+                
+                season.isArchived = false;
+                alert(`Season "${season.name}" has been restored.`);
+                render();
+            } catch (error) {
+                console.error('Error unarchiving season:', error);
+                alert('Error restoring season');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Smart delete/archive handler
+        async function confirmDeleteSeason(seasonId, seasonName) {
+            const season = state.seasons.find(s => s.id === seasonId);
+            if (!season) return;
+            
+            // Check if season has any completed matches
+            const { count: matchCount } = await db.from('matches')
+                .select('*', { count: 'exact', head: true })
                 .eq('season_id', seasonId);
             
-            const hasMatches = matchCount && matchCount.length > 0;
+            const hasMatches = matchCount && matchCount > 0;
             
-            let confirmMsg = `Delete season "${seasonName}"?\n\n`;
             if (hasMatches) {
-                confirmMsg += '⚠️ WARNING: This season has recorded match results!\n\n';
-            }
-            confirmMsg += 'This will permanently delete:\n';
-            confirmMsg += '• All schedule entries\n';
-            confirmMsg += '• All match results\n';
-            confirmMsg += '• All pending submissions\n\n';
-            confirmMsg += 'Type "DELETE" to confirm:';
-            
-            const confirmation = prompt(confirmMsg);
-            if (confirmation !== 'DELETE') {
-                if (confirmation !== null) {
-                    alert('Deletion cancelled. You must type "DELETE" exactly to confirm.');
+                // Season has started - can only archive
+                const confirmMsg = `Season "${seasonName}" has ${matchCount} completed match${matchCount > 1 ? 'es' : ''}.\n\n` +
+                    `Seasons with match history cannot be deleted to preserve records.\n\n` +
+                    `Would you like to ARCHIVE this season instead?\n` +
+                    `• Archived seasons are hidden from the main view\n` +
+                    `• All data is preserved\n` +
+                    `• You can restore it later from Settings`;
+                
+                if (confirm(confirmMsg)) {
+                    await archiveSeason(seasonId);
                 }
-                return;
+            } else {
+                // No matches - can delete, but with confirmation
+                const nonArchivedSeasons = state.seasons.filter(s => !s.isArchived);
+                
+                if (nonArchivedSeasons.length <= 1 && !season.isArchived) {
+                    alert('Cannot delete the only active season. Create a new season first, or archive this one.');
+                    return;
+                }
+                
+                const confirmMsg = `Delete season "${seasonName}"?\n\n` +
+                    `This season has no match results, so it can be permanently deleted.\n\n` +
+                    `This will remove:\n` +
+                    `• All schedule entries\n` +
+                    `• All pending submissions\n\n` +
+                    `This cannot be undone. Continue?`;
+                
+                if (confirm(confirmMsg)) {
+                    await deleteSeason(seasonId);
+                }
             }
-            
-            await deleteSeason(seasonId);
         }
 
         // Generate schedule for a NEW season (doesn't overwrite current)
@@ -1957,32 +2025,48 @@
                         <!-- Season Management (Admin Only) -->
                         ${isAdmin && state.showManageSeasons ? `
                         <div class="mt-4 border-t pt-4">
-                            <h4 class="font-semibold mb-3">All Seasons</h4>
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-semibold">All Seasons</h4>
+                                <label class="flex items-center gap-2 text-sm text-slate-600">
+                                    <input type="checkbox" 
+                                        ${state.showArchivedSeasons ? 'checked' : ''} 
+                                        onchange="window.state.showArchivedSeasons = this.checked; window.render();"
+                                        class="rounded">
+                                    Show archived
+                                </label>
+                            </div>
                             <div class="space-y-2 max-h-48 overflow-y-auto">
-                                ${state.seasons.length === 0 ? `
+                                ${state.seasons.filter(s => state.showArchivedSeasons || !s.isArchived).length === 0 ? `
                                     <p class="text-slate-500 text-sm">No seasons yet</p>
-                                ` : state.seasons.map(s => {
+                                ` : state.seasons.filter(s => state.showArchivedSeasons || !s.isArchived).map(s => {
+                                    const isArchived = s.isArchived;
                                     return `
-                                    <div class="flex items-center justify-between p-3 rounded-lg ${s.id === state.currentSeason?.id ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}">
+                                    <div class="flex items-center justify-between p-3 rounded-lg ${s.id === state.currentSeason?.id ? 'bg-emerald-50 border border-emerald-200' : isArchived ? 'bg-slate-100 opacity-60' : 'bg-slate-50'}">
                                         <div class="flex items-center gap-3">
-                                            <span class="text-lg">${s.isActive ? '🏆' : '📁'}</span>
+                                            <span class="text-lg">${isArchived ? '📦' : s.isActive ? '🏆' : '📁'}</span>
                                             <div>
                                                 <div class="font-semibold">${s.name}</div>
                                                 <div class="text-xs text-slate-500">
-                                                    ${s.isActive ? '★ Active' : 'Archived'}
+                                                    ${isArchived ? '📦 Archived' : s.isActive ? '★ Active' : 'Inactive'}
                                                     ${s.id === state.currentSeason?.id ? ' • Currently Viewing' : ''}
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-2">
-                                            ${!s.isActive ? `
-                                                <button onclick="setActiveSeason('${s.id}')" class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs hover:bg-emerald-200">
-                                                    Set Active
+                                            ${isArchived ? `
+                                                <button onclick="unarchiveSeason('${s.id}')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+                                                    Restore
                                                 </button>
-                                            ` : ''}
+                                            ` : `
+                                                ${!s.isActive ? `
+                                                    <button onclick="setActiveSeason('${s.id}')" class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs hover:bg-emerald-200">
+                                                        Set Active
+                                                    </button>
+                                                ` : ''}
+                                            `}
                                             <button onclick="confirmDeleteSeason('${s.id}', '${s.name.replace(/'/g, "\\'")}')" 
                                                 class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                                                ${state.seasons.length <= 1 ? 'disabled title="Cannot delete only season"' : ''}>
+                                                title="${isArchived ? 'Delete archived season' : 'Delete or archive season'}">
                                                 🗑️
                                             </button>
                                         </div>
@@ -4168,8 +4252,10 @@
         window.switchSeason = switchSeason;
         window.setActiveSeason = setActiveSeason;
         window.deleteSeason = deleteSeason;
-        window.createSeason = createSeason;
+        window.archiveSeason = archiveSeason;
+        window.unarchiveSeason = unarchiveSeason;
         window.confirmDeleteSeason = confirmDeleteSeason;
+        window.createSeason = createSeason;
         window.generateNewSeasonSchedule = generateNewSeasonSchedule;
 
         // ============================================
