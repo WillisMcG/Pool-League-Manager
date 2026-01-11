@@ -137,11 +137,13 @@
             schedule: [],
             submissions: [],
             matches: [],
+            venues: [],
             currentUser: null,
             activeTab: 'schedule',
             leagueName: 'Pool League',
             showCreateTeam: false,
             showGenSchedule: false,
+            showManageVenues: false,
             selectedMatch: '',
             selectedTeam: '',
             matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
@@ -157,7 +159,10 @@
             try {
                 const { data: settings, error: settingsError } = await db.from('league_settings').select('*').limit(1).single();
                 console.log('Settings:', settings, settingsError);
-                if (settings) state.leagueName = settings.name;
+                if (settings) {
+                    state.leagueName = settings.name;
+                    state.venues = settings.venues || [];
+                }
 
                 const { data: users, error: usersError } = await db.from('users').select('*');
                 console.log('Users:', users, usersError);
@@ -197,7 +202,7 @@
                 }));
 
                 state.initialized = true;
-                console.log('Data loaded:', { users: state.users.length, teams: state.teams.length, schedule: state.schedule.length });
+                console.log('Data loaded:', { users: state.users.length, teams: state.teams.length, schedule: state.schedule.length, venues: state.venues.length });
             } catch (error) {
                 console.error('Error loading data:', error);
                 state.initialized = true; // Still show login screen even on error
@@ -216,6 +221,66 @@
             } catch (error) {
                 console.error('Error saving league name:', error);
                 alert('Error saving settings');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function addVenue(name, address, phone) {
+            if (!name || !name.trim()) {
+                alert('Please enter a venue name');
+                return false;
+            }
+            name = name.trim();
+            
+            // Check if venue name already exists
+            const exists = state.venues.some(v => {
+                const venueName = typeof v === 'string' ? v : v.name;
+                return venueName.toLowerCase() === name.toLowerCase();
+            });
+            
+            if (exists) {
+                alert('Venue already exists');
+                return false;
+            }
+            
+            showLoading();
+            try {
+                const newVenue = { 
+                    name: name, 
+                    address: (address || '').trim(), 
+                    phone: (phone || '').trim() 
+                };
+                const newVenues = [...state.venues, newVenue];
+                const { data: settings } = await db.from('league_settings').select('id').limit(1).single();
+                await db.from('league_settings').update({ venues: newVenues }).eq('id', settings.id);
+                state.venues = newVenues;
+                render();
+                return true;
+            } catch (error) {
+                console.error('Error adding venue:', error);
+                alert('Error adding venue');
+                return false;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteVenue(venueName) {
+            if (!confirm('Delete venue "' + venueName + '"?')) return;
+            showLoading();
+            try {
+                const newVenues = state.venues.filter(v => {
+                    const name = typeof v === 'string' ? v : v.name;
+                    return name !== venueName;
+                });
+                const { data: settings } = await db.from('league_settings').select('id').limit(1).single();
+                await db.from('league_settings').update({ venues: newVenues }).eq('id', settings.id);
+                state.venues = newVenues;
+                render();
+            } catch (error) {
+                console.error('Error deleting venue:', error);
+                alert('Error deleting venue');
             } finally {
                 hideLoading();
             }
@@ -318,24 +383,24 @@
         // ============================================
         // TEAM FUNCTIONS
         // ============================================
-        async function createTeam(name, venue, captain, phone) {
+        async function createTeam(name, venue, captain) {
             if (!name) { alert('Team name required'); return false; }
 
             showLoading();
             try {
                 const { data, error } = await db.from('teams').insert([{
-                    name, venue: venue || '', captain: captain || '', phone: phone || '', players: []
+                    name, venue: venue || '', captain: captain || '', players: []
                 }]).select().single();
 
                 if (error) throw error;
 
                 state.teams = [...state.teams, {
                     id: data.id, name: data.name, venue: data.venue,
-                    captain: data.captain, phone: data.phone, players: data.players || []
+                    captain: data.captain, players: data.players || []
                 }];
 
                 state.showCreateTeam = false;
-                alert(`Team "${name}" created!`);
+                alert('Team "' + name + '" created!');
                 render();
                 return true;
             } catch (error) {
@@ -1272,6 +1337,8 @@
             const isAdmin = state.currentUser.role === 'admin';
             const myTeamId = state.currentUser.teamId;
 
+            const captains = state.users.filter(u => u.role === 'captain');
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
@@ -1279,15 +1346,71 @@
                     </div>
 
                     ${isAdmin ? `
+                    <!-- Venue Management Section -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <button onclick="window.state.showManageVenues = !window.state.showManageVenues; window.render();" class="w-full bg-slate-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2">
+                            📍 Manage Venues ${state.showManageVenues ? '▲' : '▼'}
+                        </button>
+                        ${state.showManageVenues ? `
+                        <div class="mt-4 border-t pt-4">
+                            <div class="space-y-2 mb-4 p-4 bg-slate-50 rounded-lg">
+                                <input type="text" id="new-venue-name" placeholder="Venue name *" class="w-full px-4 py-2 border-2 rounded-lg">
+                                <input type="text" id="new-venue-address" placeholder="Address" class="w-full px-4 py-2 border-2 rounded-lg">
+                                <input type="tel" id="new-venue-phone" placeholder="Phone number" class="w-full px-4 py-2 border-2 rounded-lg">
+                                <button onclick="handleAddVenue()" class="w-full px-6 py-2 bg-blue-600 text-white font-bold rounded-lg">Add Venue</button>
+                            </div>
+                            ${state.venues.length === 0 ? 
+                                '<p class="text-slate-500 text-center py-4">No venues defined yet</p>' :
+                                '<div class="space-y-2">' + state.venues.map(v => {
+                                    const venue = typeof v === 'string' ? { name: v, address: '', phone: '' } : v;
+                                    const phoneClean = venue.phone ? venue.phone.replace(/[^0-9+]/g, '') : '';
+                                    const addressEncoded = venue.address ? encodeURIComponent(venue.address) : '';
+                                    return `
+                                    <div class="bg-slate-50 p-3 rounded border">
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <div class="font-bold">📍 ${venue.name}</div>
+                                                ${venue.address ? '<a href="https://maps.google.com/?q=' + addressEncoded + '" target="_blank" class="text-sm text-blue-600 hover:underline block">🏠 ' + venue.address + '</a>' : ''}
+                                                ${venue.phone ? '<a href="tel:' + phoneClean + '" class="text-sm text-blue-600 hover:underline block">📞 ' + venue.phone + '</a>' : ''}
+                                            </div>
+                                            <button onclick="deleteVenue('${venue.name.replace(/'/g, "\\'")}')" class="text-red-600 text-sm">❌</button>
+                                        </div>
+                                    </div>
+                                `}).join('') + '</div>'
+                            }
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Create Team Section -->
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <button onclick="window.state.showCreateTeam = !window.state.showCreateTeam; window.render();" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ Create Team</button>
                         ${state.showCreateTeam ? `
                         <div class="mt-4 space-y-3 border-t pt-4">
-                            <input type="text" id="team-name" placeholder="Team Name" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="text" id="team-venue" placeholder="Home Venue" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="text" id="team-captain" placeholder="Captain" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="tel" id="team-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <button onclick="handleCreateTeam()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
+                            <div>
+                                <label class="block text-sm font-bold mb-1">Team Name *</label>
+                                <input type="text" id="team-name" placeholder="Enter team name" class="w-full px-4 py-2 border-2 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-1">Home Venue</label>
+                                <select id="team-venue" class="w-full px-4 py-2 border-2 rounded-lg">
+                                    <option value="">Select venue...</option>
+                                    ${state.venues.map(v => {
+                                        const venue = typeof v === 'string' ? { name: v } : v;
+                                        return '<option value="' + venue.name + '">' + venue.name + '</option>';
+                                    }).join('')}
+                                </select>
+                                ${state.venues.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ Add venues above first</p>' : ''}
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-1">Captain</label>
+                                <select id="team-captain" class="w-full px-4 py-2 border-2 rounded-lg">
+                                    <option value="">Select captain...</option>
+                                    ${captains.map(c => `<option value="${c.username}">${c.username}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
+                                </select>
+                                ${captains.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ Create captain users first</p>' : ''}
+                            </div>
+                            <button onclick="handleCreateTeam()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create Team</button>
                         </div>
                         ` : ''}
                     </div>
@@ -1295,12 +1418,22 @@
 
                     ${state.teams.map(team => {
                         const canEdit = isAdmin || myTeamId === team.id;
+                        const venueData = state.venues.find(v => (typeof v === 'string' ? v : v.name) === team.venue);
+                        const venueObj = venueData ? (typeof venueData === 'string' ? { name: venueData } : venueData) : null;
+                        const venuePhone = venueObj && venueObj.phone ? venueObj.phone.replace(/[^0-9+]/g, '') : '';
+                        const venueAddress = venueObj && venueObj.address ? encodeURIComponent(venueObj.address) : '';
+                        
                         return `
                         <div class="bg-white rounded-xl shadow-lg p-6 ${myTeamId === team.id ? 'border-2 border-emerald-400' : ''}">
                             <div class="flex justify-between items-start mb-4">
                                 <div>
                                     <h3 class="text-2xl font-bold">${team.name}</h3>
-                                    <p class="text-slate-600">📍 ${team.venue || 'No venue'} • 👤 ${team.captain || 'No captain'}</p>
+                                    <div class="text-slate-600">
+                                        <span>📍 ${team.venue || 'No venue'}</span>
+                                        ${venueObj && venueObj.address ? ' <a href="https://maps.google.com/?q=' + venueAddress + '" target="_blank" class="text-blue-600 hover:underline">(Map)</a>' : ''}
+                                        ${venueObj && venueObj.phone ? ' <a href="tel:' + venuePhone + '" class="text-blue-600 hover:underline">(Call)</a>' : ''}
+                                        <span> • 👤 ${team.captain || 'No captain'}</span>
+                                    </div>
                                 </div>
                                 ${isAdmin ? `<button onclick="deleteTeam('${team.id}')" class="text-red-600">❌</button>` : ''}
                             </div>
@@ -1883,9 +2016,19 @@
             await createTeam(
                 document.getElementById('team-name').value,
                 document.getElementById('team-venue').value,
-                document.getElementById('team-captain').value,
-                document.getElementById('team-phone').value
+                document.getElementById('team-captain').value
             );
+        };
+
+        window.handleAddVenue = async function() {
+            const nameInput = document.getElementById('new-venue-name');
+            const addressInput = document.getElementById('new-venue-address');
+            const phoneInput = document.getElementById('new-venue-phone');
+            if (await addVenue(nameInput.value, addressInput.value, phoneInput.value)) {
+                nameInput.value = '';
+                addressInput.value = '';
+                phoneInput.value = '';
+            }
         };
 
         window.handleAddPlayer = async function(teamId) {
@@ -1970,6 +2113,8 @@
         window.approveSubmission = approveSubmission;
         window.rejectBoth = rejectBoth;
         window.clearAllData = clearAllData;
+        window.addVenue = addVenue;
+        window.deleteVenue = deleteVenue;
 
         init();
         } // end startApp
