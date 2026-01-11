@@ -153,8 +153,18 @@
             showManageSeasons: false,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
-            // Auto-generate sub-mode: null, 'roundrobin', 'csv'
+            // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
             autoGenMode: null,
+            // Custom Round Robin settings
+            customRR: {
+                matchesPerNight: 4,
+                bestOf: 3,
+                playDays: ['tuesday'],  // which days of week
+                frequency: 'weekly',    // weekly, biweekly
+                positionNights: 2,      // 0, 1, 2, or more
+                positionNightPlacement: 'half', // 'half' (after each half), 'end' (all at end), 'start' (all at start)
+                byePoints: 'win'        // 'win' (counts as a win) or 'none' (worth 0)
+            },
             // Manual match form data
             manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
             selectedMatch: '',
@@ -1582,13 +1592,21 @@
                 }
             });
 
+            // Bye week points - check matchFormat.byePoints setting
             state.schedule.filter(s => s.isBye && !s.isPositionNight && s.half <= upToHalf).forEach(s => {
                 const byeDate = new Date(s.date);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 if (byeDate <= today) {
-                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                    if (idx !== -1) standings[idx].gamesWon += 5;
+                    const byePointsSetting = s.matchFormat?.byePoints || 'win';
+                    if (byePointsSetting === 'win') {
+                        const idx = standings.findIndex(st => st.id === s.homeTeamId);
+                        if (idx !== -1) {
+                            standings[idx].wins += 1;
+                            const gamesAwarded = s.matchFormat?.matchesPerNight || 5;
+                            standings[idx].gamesWon += gamesAwarded;
+                        }
+                    }
                 }
             });
 
@@ -1622,13 +1640,24 @@
                 }
             });
 
+            // Bye week points - check matchFormat.byePoints setting
             state.schedule.filter(s => s.isBye && !s.isPositionNight).forEach(s => {
                 const byeDate = new Date(s.date);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 if (byeDate <= today) {
-                    const idx = standings.findIndex(st => st.id === s.homeTeamId);
-                    if (idx !== -1) standings[idx].gamesWon += 5;
+                    // Check if bye is worth points
+                    const byePointsSetting = s.matchFormat?.byePoints || 'win'; // default to 'win' for backwards compatibility
+                    if (byePointsSetting === 'win') {
+                        const idx = standings.findIndex(st => st.id === s.homeTeamId);
+                        if (idx !== -1) {
+                            standings[idx].wins += 1;
+                            // Award games based on matchesPerNight setting, default to 5
+                            const gamesAwarded = s.matchFormat?.matchesPerNight || 5;
+                            standings[idx].gamesWon += gamesAwarded;
+                        }
+                    }
+                    // If 'none', don't add any points
                 }
             });
 
@@ -2286,12 +2315,20 @@
                     
                     <!-- Auto-generate options grid -->
                     <div class="grid md:grid-cols-2 gap-4 mb-6">
-                        <!-- Round Robin -->
+                        <!-- Round Robin (Standard) -->
                         <button onclick="window.state.autoGenMode = 'roundrobin'; window.render();" 
                             class="p-6 border-2 ${autoMode === 'roundrobin' ? 'border-blue-500 bg-blue-50' : 'border-slate-200'} rounded-xl hover:border-blue-400 text-left transition-all">
                             <div class="text-3xl mb-2">🔁</div>
-                            <h4 class="font-bold text-slate-800">Round Robin</h4>
-                            <p class="text-sm text-slate-600 mt-1">Each team plays every other team. Includes byes and position nights.</p>
+                            <h4 class="font-bold text-slate-800">Round Robin (Standard)</h4>
+                            <p class="text-sm text-slate-600 mt-1">Default settings: 5 matches/night, best of 3, weekly on the start date's day.</p>
+                        </button>
+                        
+                        <!-- Custom Round Robin -->
+                        <button onclick="window.state.autoGenMode = 'customrr'; window.render();" 
+                            class="p-6 border-2 ${autoMode === 'customrr' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200'} rounded-xl hover:border-emerald-400 text-left transition-all">
+                            <div class="text-3xl mb-2">⚙️</div>
+                            <h4 class="font-bold text-slate-800">Round Robin (Custom)</h4>
+                            <p class="text-sm text-slate-600 mt-1">Customize matches per night, games to win, play days, and frequency.</p>
                         </button>
                         
                         <!-- CSV Import -->
@@ -2308,16 +2345,11 @@
                             <h4 class="font-bold text-slate-400">Single Elimination</h4>
                             <p class="text-sm text-slate-400 mt-1">Coming soon...</p>
                         </div>
-                        
-                        <div class="p-6 border-2 border-dashed border-slate-200 rounded-xl opacity-50">
-                            <div class="text-3xl mb-2">🎲</div>
-                            <h4 class="font-bold text-slate-400">Swiss System</h4>
-                            <p class="text-sm text-slate-400 mt-1">Coming soon...</p>
-                        </div>
                     </div>
                     
                     <!-- Selected option content -->
                     ${autoMode === 'roundrobin' ? renderRoundRobinForm() : ''}
+                    ${autoMode === 'customrr' ? renderCustomRoundRobinForm() : ''}
                     ${autoMode === 'csv' ? renderCSVImportForm() : ''}
                 </div>
             `;
@@ -2363,6 +2395,530 @@
                     </button>
                 </div>
             `;
+        }
+        
+        // Custom Round Robin form with all options
+        function renderCustomRoundRobinForm() {
+            const cfg = state.customRR;
+            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            
+            return `
+                <div class="border-t pt-6 mt-6">
+                    <h4 class="font-bold mb-4">⚙️ Custom Round Robin Settings</h4>
+                    
+                    <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4">
+                        <p class="text-yellow-800 text-sm font-semibold">⚠️ This will replace the current schedule</p>
+                        <p class="text-yellow-700 text-xs mt-1">All existing matches in "${state.currentSeason?.name}" will be deleted.</p>
+                    </div>
+                    
+                    <!-- Start Date -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Start Date</label>
+                        <input type="date" id="custom-rr-start-date" class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
+                        <p class="text-xs text-slate-500 mt-1">First match night of the season</p>
+                    </div>
+                    
+                    <!-- Match Settings -->
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6">
+                        <h5 class="font-semibold text-emerald-800 mb-3">🎱 Match Settings</h5>
+                        
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <!-- Matches Per Night -->
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Matches Per Night</label>
+                                <select id="custom-rr-matches" onchange="window.state.customRR.matchesPerNight = parseInt(this.value); window.render();"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
+                                    ${[1,2,3,4,5,6,7,8,9,10].map(n => `
+                                        <option value="${n}" ${cfg.matchesPerNight === n ? 'selected' : ''}>${n} match${n > 1 ? 'es' : ''}</option>
+                                    `).join('')}
+                                </select>
+                                <p class="text-xs text-slate-500 mt-1">How many individual player matches per team match</p>
+                            </div>
+                            
+                            <!-- Best Of -->
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Games to Win (Best of)</label>
+                                <select id="custom-rr-bestof" onchange="window.state.customRR.bestOf = parseInt(this.value); window.render();"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg">
+                                    ${[1,2,3,4,5].map(n => {
+                                        const bestOf = n * 2 - 1;
+                                        return `<option value="${n}" ${cfg.bestOf === n ? 'selected' : ''}>Best of ${bestOf} (first to ${n})</option>`;
+                                    }).join('')}
+                                </select>
+                                <p class="text-xs text-slate-500 mt-1">Games needed to win each individual match</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Schedule Settings -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <h5 class="font-semibold text-blue-800 mb-3">📅 Schedule Settings</h5>
+                        
+                        <!-- Play Days -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Play Days</label>
+                            <p class="text-xs text-slate-500 mb-2">Select which days of the week matches can be played</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${days.map(day => `
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all
+                                        ${cfg.playDays.includes(day) ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                        <input type="checkbox" 
+                                            ${cfg.playDays.includes(day) ? 'checked' : ''} 
+                                            onchange="togglePlayDay('${day}')"
+                                            class="sr-only">
+                                        <span class="font-medium text-sm capitalize">${day.slice(0,3)}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <!-- Frequency -->
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Frequency</label>
+                            <div class="flex gap-3">
+                                <label class="flex items-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all flex-1
+                                    ${cfg.frequency === 'weekly' ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                    <input type="radio" name="frequency" value="weekly" 
+                                        ${cfg.frequency === 'weekly' ? 'checked' : ''}
+                                        onchange="window.state.customRR.frequency = 'weekly'; window.render();"
+                                        class="sr-only">
+                                    <div>
+                                        <div class="font-semibold">Weekly</div>
+                                        <div class="text-xs opacity-75">Every week</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all flex-1
+                                    ${cfg.frequency === 'biweekly' ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                    <input type="radio" name="frequency" value="biweekly" 
+                                        ${cfg.frequency === 'biweekly' ? 'checked' : ''}
+                                        onchange="window.state.customRR.frequency = 'biweekly'; window.render();"
+                                        class="sr-only">
+                                    <div>
+                                        <div class="font-semibold">Bi-Weekly</div>
+                                        <div class="text-xs opacity-75">Every other week</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Position Night Settings -->
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                        <h5 class="font-semibold text-purple-800 mb-3">🏆 Position Night Settings</h5>
+                        
+                        <!-- Number of Position Nights -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Number of Position Nights</label>
+                            <div class="flex flex-wrap gap-2">
+                                ${[0, 1, 2, 3, 4].map(n => `
+                                    <label class="flex items-center justify-center w-12 h-12 rounded-lg border-2 cursor-pointer transition-all
+                                        ${cfg.positionNights === n ? 'bg-purple-100 border-purple-400 text-purple-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                        <input type="radio" name="positionNights" value="${n}" 
+                                            ${cfg.positionNights === n ? 'checked' : ''}
+                                            onchange="window.state.customRR.positionNights = ${n}; window.render();"
+                                            class="sr-only">
+                                        <span class="font-bold text-lg">${n}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1">Position nights match teams by standings (1st vs 2nd, 3rd vs 4th, etc.)</p>
+                        </div>
+                        
+                        <!-- Position Night Placement (only show if > 0 position nights) -->
+                        ${cfg.positionNights > 0 ? `
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">When to Schedule Position Nights</label>
+                            <div class="space-y-2">
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                                    ${cfg.positionNightPlacement === 'half' ? 'bg-purple-100 border-purple-400' : 'bg-white border-slate-200 hover:border-slate-300'}">
+                                    <input type="radio" name="positionPlacement" value="half" 
+                                        ${cfg.positionNightPlacement === 'half' ? 'checked' : ''}
+                                        onchange="window.state.customRR.positionNightPlacement = 'half'; window.render();"
+                                        class="mt-1">
+                                    <div>
+                                        <div class="font-semibold text-slate-800">Split Evenly</div>
+                                        <div class="text-xs text-slate-600">Distribute position nights evenly throughout the season (e.g., after each half)</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                                    ${cfg.positionNightPlacement === 'end' ? 'bg-purple-100 border-purple-400' : 'bg-white border-slate-200 hover:border-slate-300'}">
+                                    <input type="radio" name="positionPlacement" value="end" 
+                                        ${cfg.positionNightPlacement === 'end' ? 'checked' : ''}
+                                        onchange="window.state.customRR.positionNightPlacement = 'end'; window.render();"
+                                        class="mt-1">
+                                    <div>
+                                        <div class="font-semibold text-slate-800">All at End</div>
+                                        <div class="text-xs text-slate-600">Schedule all position nights at the end of the season (playoffs style)</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                                    ${cfg.positionNightPlacement === 'start' ? 'bg-purple-100 border-purple-400' : 'bg-white border-slate-200 hover:border-slate-300'}">
+                                    <input type="radio" name="positionPlacement" value="start" 
+                                        ${cfg.positionNightPlacement === 'start' ? 'checked' : ''}
+                                        onchange="window.state.customRR.positionNightPlacement = 'start'; window.render();"
+                                        class="mt-1">
+                                    <div>
+                                        <div class="font-semibold text-slate-800">All at Start</div>
+                                        <div class="text-xs text-slate-600">Schedule position nights at the beginning (seeding rounds)</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        ` : `
+                        <div class="text-sm text-slate-500 italic">
+                            No position nights - season will only have regular round-robin matches.
+                        </div>
+                        `}
+                    </div>
+                    
+                    <!-- Bye Week Settings -->
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                        <h5 class="font-semibold text-amber-800 mb-3">🏖️ Bye Week Settings</h5>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">How are bye weeks scored?</label>
+                            <div class="space-y-2">
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                                    ${cfg.byePoints === 'win' ? 'bg-amber-100 border-amber-400' : 'bg-white border-slate-200 hover:border-slate-300'}">
+                                    <input type="radio" name="byePoints" value="win" 
+                                        ${cfg.byePoints === 'win' ? 'checked' : ''}
+                                        onchange="window.state.customRR.byePoints = 'win'; window.render();"
+                                        class="mt-1">
+                                    <div>
+                                        <div class="font-semibold text-slate-800">Counts as a Win</div>
+                                        <div class="text-xs text-slate-600">Team receives credit for a match win and ${cfg.matchesPerNight} game wins during bye week</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                                    ${cfg.byePoints === 'none' ? 'bg-amber-100 border-amber-400' : 'bg-white border-slate-200 hover:border-slate-300'}">
+                                    <input type="radio" name="byePoints" value="none" 
+                                        ${cfg.byePoints === 'none' ? 'checked' : ''}
+                                        onchange="window.state.customRR.byePoints = 'none'; window.render();"
+                                        class="mt-1">
+                                    <div>
+                                        <div class="font-semibold text-slate-800">Worth Nothing</div>
+                                        <div class="text-xs text-slate-600">Bye weeks don't count toward standings - no wins or games credited</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Preview -->
+                    <div class="bg-slate-50 p-4 rounded-lg mb-4">
+                        <h5 class="font-semibold text-sm mb-2">📊 Schedule Preview:</h5>
+                        <ul class="text-xs text-slate-600 space-y-1">
+                            <li>✓ <strong>${state.teams.length}</strong> teams registered</li>
+                            <li>✓ <strong>${cfg.matchesPerNight}</strong> individual matches per team match</li>
+                            <li>✓ <strong>Best of ${cfg.bestOf * 2 - 1}</strong> (first to ${cfg.bestOf} wins)</li>
+                            <li>✓ Play on: <strong>${cfg.playDays.length > 0 ? cfg.playDays.map(d => d.charAt(0).toUpperCase() + d.slice(1,3)).join(', ') : 'No days selected!'}</strong></li>
+                            <li>✓ Frequency: <strong>${cfg.frequency === 'weekly' ? 'Every week' : 'Every 2 weeks'}</strong></li>
+                            <li>✓ <strong>${cfg.positionNights}</strong> position night${cfg.positionNights !== 1 ? 's' : ''} ${cfg.positionNights > 0 ? `(${cfg.positionNightPlacement === 'half' ? 'split evenly' : cfg.positionNightPlacement === 'end' ? 'at end' : 'at start'})` : ''}</li>
+                            <li>✓ Bye weeks: <strong>${cfg.byePoints === 'win' ? 'Count as wins' : 'Worth nothing'}</strong></li>
+                            <li>✓ ${state.teams.length * 2} regular weeks + ${cfg.positionNights} position nights = <strong>${state.teams.length * 2 + cfg.positionNights} total weeks</strong></li>
+                            <li>✓ Estimated duration: <strong>~${Math.ceil((state.teams.length * 2 + cfg.positionNights) * (cfg.frequency === 'biweekly' ? 2 : 1))} weeks</strong></li>
+                        </ul>
+                    </div>
+                    
+                    <button onclick="generateCustomRoundRobinSchedule()" 
+                        ${cfg.playDays.length === 0 ? 'disabled' : ''}
+                        class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        🚀 Generate Custom Schedule
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Toggle play day selection
+        function togglePlayDay(day) {
+            const days = state.customRR.playDays;
+            const idx = days.indexOf(day);
+            if (idx > -1) {
+                days.splice(idx, 1);
+            } else {
+                days.push(day);
+            }
+            render();
+        }
+        window.togglePlayDay = togglePlayDay;
+        
+        // Generate custom round robin schedule
+        function generateCustomRoundRobinSchedule() {
+            const startDateVal = document.getElementById('custom-rr-start-date')?.value;
+            if (!startDateVal) {
+                alert('Please select a start date');
+                return;
+            }
+            
+            const cfg = state.customRR;
+            if (cfg.playDays.length === 0) {
+                alert('Please select at least one play day');
+                return;
+            }
+            
+            if (state.teams.length < 2) {
+                alert('Need at least 2 teams to generate a schedule');
+                return;
+            }
+            
+            // Store config in season settings for later reference
+            const seasonSettings = {
+                matchesPerNight: cfg.matchesPerNight,
+                bestOf: cfg.bestOf,
+                playDays: [...cfg.playDays],
+                frequency: cfg.frequency
+            };
+            
+            // Generate the schedule using the custom settings
+            const schedule = generateCustomRRSchedule(startDateVal, cfg);
+            
+            if (!schedule || schedule.length === 0) {
+                alert('Failed to generate schedule. Please try again.');
+                return;
+            }
+            
+            // Save to state
+            state.schedule = schedule;
+            storage.set('schedule', schedule);
+            
+            // Reset UI state
+            state.scheduleMode = null;
+            state.autoGenMode = null;
+            
+            alert(`Schedule generated successfully!\n\n• ${schedule.filter(s => !s.isBye && !s.isPositionNight).length} regular matches\n• ${schedule.filter(s => s.isBye).length} bye weeks\n• ${schedule.filter(s => s.isPositionNight).length} position night matches\n\nMatch format: Best of ${cfg.bestOf * 2 - 1} (${cfg.matchesPerNight} matches per night)`);
+            render();
+        }
+        window.generateCustomRoundRobinSchedule = generateCustomRoundRobinSchedule;
+        
+        // Custom RR schedule generator - uses circle method with custom date logic
+        function generateCustomRRSchedule(startDate, cfg) {
+            const teams = [...state.teams];
+            const numTeams = teams.length;
+            const newSchedule = [];
+            
+            // Add BYE placeholder for odd number of teams
+            const teamList = [...teams];
+            if (numTeams % 2 === 1) {
+                teamList.push({ id: 'BYE_PLACEHOLDER', name: 'BYE', venue: 'BYE WEEK' });
+            }
+            
+            const n = teamList.length;
+            const rounds = n - 1;
+            
+            // Track home/away for reversal
+            const firstHalfHomeAway = {};
+            
+            // Calculate dates based on play days and frequency
+            const dayMap = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+            const playDayNums = cfg.playDays.map(d => dayMap[d]).sort((a, b) => a - b);
+            
+            let currentDate = new Date(startDate);
+            let weekNum = 0;
+            
+            // Helper to get next valid play date
+            function getNextPlayDate(fromDate, skipWeeks = 0) {
+                let date = new Date(fromDate);
+                if (skipWeeks > 0) {
+                    date.setDate(date.getDate() + (skipWeeks * 7));
+                }
+                
+                // Find next valid play day
+                for (let i = 0; i < 14; i++) {
+                    const dow = date.getDay();
+                    if (playDayNums.includes(dow)) {
+                        break;
+                    }
+                    date.setDate(date.getDate() + 1);
+                }
+                
+                return date;
+            }
+            
+            // Helper to add position night(s)
+            function addPositionNight(posNightNum) {
+                weekNum++;
+                const positionDate = currentDate.toISOString().split('T')[0];
+                const numPositionMatches = Math.floor(numTeams / 2);
+                
+                for (let pos = 0; pos < numPositionMatches; pos++) {
+                    const position1 = (pos * 2) + 1;
+                    const position2 = (pos * 2) + 2;
+                    
+                    newSchedule.push({
+                        id: `${Date.now()}-pos-${posNightNum}-${pos}-${Math.random()}`,
+                        week: weekNum.toString(),
+                        date: positionDate,
+                        homeTeamId: `POSITION_${position1}`,
+                        awayTeamId: `POSITION_${position2}`,
+                        venue: 'TBD - Based on Standings',
+                        isBye: false,
+                        half: posNightNum,
+                        isPositionNight: true,
+                        positionHome: position1,
+                        positionAway: position2,
+                        positionNightNumber: posNightNum,
+                        matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
+                    });
+                }
+                
+                // Odd team bye on position night
+                if (numTeams % 2 === 1) {
+                    newSchedule.push({
+                        id: `${Date.now()}-pos-${posNightNum}-bye-${Math.random()}`,
+                        week: weekNum.toString(),
+                        date: positionDate,
+                        homeTeamId: `POSITION_${numTeams}`,
+                        awayTeamId: 'BYE',
+                        venue: 'BYE WEEK',
+                        isBye: true,
+                        half: posNightNum,
+                        isPositionNight: true,
+                        positionHome: numTeams,
+                        positionNightNumber: posNightNum
+                    });
+                }
+                
+                // Move to next date
+                const weeksToSkip = cfg.frequency === 'biweekly' ? 2 : 1;
+                currentDate = getNextPlayDate(currentDate, weeksToSkip);
+            }
+            
+            // Adjust start date to first valid play day
+            currentDate = getNextPlayDate(currentDate);
+            
+            // Position nights at START
+            if (cfg.positionNightPlacement === 'start' && cfg.positionNights > 0) {
+                for (let pn = 1; pn <= cfg.positionNights; pn++) {
+                    addPositionNight(pn);
+                }
+            }
+            
+            // Calculate when to insert position nights for 'half' placement
+            const totalRounds = rounds * 2; // Two halves
+            let positionNightsInserted = 0;
+            const positionNightInterval = cfg.positionNights > 0 ? Math.floor(totalRounds / (cfg.positionNights + 1)) : 0;
+            let roundsSinceLastPosition = 0;
+            
+            for (let half = 1; half <= 2; half++) {
+                const rotating = [...teamList];
+                
+                for (let round = 0; round < rounds; round++) {
+                    weekNum++;
+                    const matchDate = currentDate.toISOString().split('T')[0];
+                    
+                    // Generate matches for this round
+                    for (let i = 0; i < n / 2; i++) {
+                        const team1 = rotating[i];
+                        const team2 = rotating[n - 1 - i];
+                        
+                        if (team1.id === 'BYE_PLACEHOLDER' && team2.id === 'BYE_PLACEHOLDER') continue;
+                        
+                        // Bye week
+                        if (team1.id === 'BYE_PLACEHOLDER') {
+                            newSchedule.push({
+                                id: `${Date.now()}-${weekNum}-bye-${team2.id}-${Math.random()}`,
+                                week: weekNum.toString(),
+                                date: matchDate,
+                                homeTeamId: team2.id,
+                                awayTeamId: 'BYE',
+                                venue: 'BYE WEEK',
+                                isBye: true,
+                                half: half,
+                                isPositionNight: false,
+                                matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
+                            });
+                            continue;
+                        }
+                        
+                        if (team2.id === 'BYE_PLACEHOLDER') {
+                            newSchedule.push({
+                                id: `${Date.now()}-${weekNum}-bye-${team1.id}-${Math.random()}`,
+                                week: weekNum.toString(),
+                                date: matchDate,
+                                homeTeamId: team1.id,
+                                awayTeamId: 'BYE',
+                                venue: 'BYE WEEK',
+                                isBye: true,
+                                half: half,
+                                isPositionNight: false,
+                                matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
+                            });
+                            continue;
+                        }
+                        
+                        // Regular match
+                        let home, away;
+                        const matchKey = [team1.id, team2.id].sort().join('-');
+                        
+                        if (half === 1) {
+                            if ((round + i) % 2 === 0) {
+                                home = team1;
+                                away = team2;
+                            } else {
+                                home = team2;
+                                away = team1;
+                            }
+                            firstHalfHomeAway[matchKey] = home.id;
+                        } else {
+                            const firstHalfHome = firstHalfHomeAway[matchKey];
+                            if (firstHalfHome === team1.id) {
+                                home = team2;
+                                away = team1;
+                            } else {
+                                home = team1;
+                                away = team2;
+                            }
+                        }
+                        
+                        newSchedule.push({
+                            id: `${Date.now()}-${weekNum}-${home.id}-${away.id}-${Math.random()}`,
+                            week: weekNum.toString(),
+                            date: matchDate,
+                            homeTeamId: home.id,
+                            awayTeamId: away.id,
+                            venue: home.venue || 'TBD',
+                            isBye: false,
+                            half: half,
+                            isPositionNight: false,
+                            matchFormat: { matchesPerNight: cfg.matchesPerNight, bestOf: cfg.bestOf, byePoints: cfg.byePoints }
+                        });
+                    }
+                    
+                    // Move to next date
+                    const weeksToSkip = cfg.frequency === 'biweekly' ? 2 : 1;
+                    currentDate = getNextPlayDate(currentDate, weeksToSkip);
+                    
+                    // Rotate
+                    const last = rotating.pop();
+                    rotating.splice(1, 0, last);
+                    
+                    // Check if we should insert a position night (for 'half' placement)
+                    if (cfg.positionNightPlacement === 'half' && cfg.positionNights > 0) {
+                        roundsSinceLastPosition++;
+                        if (roundsSinceLastPosition >= positionNightInterval && positionNightsInserted < cfg.positionNights) {
+                            positionNightsInserted++;
+                            addPositionNight(positionNightsInserted);
+                            roundsSinceLastPosition = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Position nights at END
+            if (cfg.positionNightPlacement === 'end' && cfg.positionNights > 0) {
+                for (let pn = 1; pn <= cfg.positionNights; pn++) {
+                    addPositionNight(pn);
+                }
+            }
+            
+            // If 'half' placement and we haven't inserted all position nights yet, add remaining at end
+            if (cfg.positionNightPlacement === 'half' && positionNightsInserted < cfg.positionNights) {
+                for (let pn = positionNightsInserted + 1; pn <= cfg.positionNights; pn++) {
+                    addPositionNight(pn);
+                }
+            }
+            
+            return newSchedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
         }
         
         // CSV Import form
