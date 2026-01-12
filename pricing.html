@@ -401,19 +401,6 @@
         // ============================================
         // CHECKOUT
         // ============================================
-        
-        // Stripe Payment Links
-        const PAYMENT_LINKS = {
-            starter: {
-                monthly: 'https://buy.stripe.com/test_28E9ATeWRf1y4UVfoPdjO01',
-                annual: 'https://buy.stripe.com/test_4gMbJ13e97z65YZa4vdjO02'
-            },
-            pro: {
-                monthly: 'https://buy.stripe.com/test_4gMeVdbKFdXudrrgsTdjO03',
-                annual: 'https://buy.stripe.com/test_3cI5kDdSN9Hebjj0tVdjO04'
-            }
-        };
-        
         async function checkout() {
             if (!selectedPlan || !currentUser || !currentOrg) {
                 alert('Please select a plan');
@@ -425,15 +412,25 @@
             btn.textContent = 'Redirecting to checkout...';
 
             try {
-                // Get the payment link for selected plan and billing interval
-                const paymentLink = PAYMENT_LINKS[selectedPlan][billingInterval];
+                const priceId = PRICE_IDS[selectedPlan][billingInterval];
                 
-                // Add client_reference_id to track which org is paying
-                const checkoutUrl = paymentLink + '?client_reference_id=' + currentOrg.id + '&prefilled_email=' + encodeURIComponent(currentUser.username);
+                // Create Stripe Checkout Session via Supabase Edge Function
+                // For now, we'll use Stripe's client-only checkout (Payment Links alternative)
+                // In production, you'd create a checkout session server-side
                 
-                // Redirect to Stripe Payment Link
-                window.location.href = checkoutUrl;
-                
+                // Redirect to Stripe Checkout
+                const { error } = await stripe.redirectToCheckout({
+                    lineItems: [{ price: priceId, quantity: 1 }],
+                    mode: 'subscription',
+                    successUrl: window.location.origin + '/app.html?checkout=success&plan=' + selectedPlan,
+                    cancelUrl: window.location.origin + '/pricing.html?checkout=canceled',
+                    clientReferenceId: currentOrg.id, // Pass org ID to identify in webhook
+                    customerEmail: currentUser.username, // Pre-fill email
+                });
+
+                if (error) {
+                    throw error;
+                }
             } catch (error) {
                 console.error('Checkout error:', error);
                 alert('Error starting checkout: ' + error.message);
