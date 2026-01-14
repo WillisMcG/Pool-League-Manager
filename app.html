@@ -168,7 +168,13 @@
                 timesToPlay: 2          // how many times each team faces every other team (1, 2, 3, 4)
             },
             // Manual match form data
-            manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
+            manualMatch: { week: '1', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
+            manualSettings: {
+                startDate: '',
+                playDays: ['tuesday'],
+                currentWeek: 1,
+                lastDate: null
+            },
             selectedMatch: '',
             selectedTeam: '',
             matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
@@ -1252,9 +1258,10 @@
         // ============================================
         async function addManualMatch() {
             const m = state.manualMatch;
+            const ms = state.manualSettings;
             
-            if (!m.week || !m.date || !m.homeTeamId) {
-                alert('Please fill in week, date, and home team');
+            if (!m.date || !m.homeTeamId) {
+                alert('Please fill in date and home team');
                 return;
             }
             
@@ -1274,7 +1281,7 @@
             showLoading();
             try {
                 const scheduleEntry = {
-                    week: m.week,
+                    week: m.week || ms.currentWeek.toString(),
                     date: m.date,
                     home_team_id: m.homeTeamId,
                     away_team_id: isBye ? 'BYE' : m.awayTeamId,
@@ -1307,10 +1314,23 @@
                 // Sort schedule by week
                 state.schedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
                 
-                // Reset form
-                state.manualMatch = { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' };
+                // Auto-increment week and calculate next date
+                ms.currentWeek = parseInt(m.week || ms.currentWeek) + 1;
+                ms.lastDate = m.date;
                 
-                alert('Match added successfully!');
+                // Calculate next play date
+                const nextDate = getNextManualPlayDate(m.date);
+                
+                // Reset form but keep week/date auto-updated
+                state.manualMatch = { 
+                    week: ms.currentWeek.toString(), 
+                    date: nextDate, 
+                    homeTeamId: '', 
+                    awayTeamId: '', 
+                    venue: '', 
+                    half: m.half 
+                };
+                
                 render();
             } catch (error) {
                 console.error('Error adding match:', error);
@@ -1319,6 +1339,153 @@
                 hideLoading();
             }
         }
+        
+        // Get next play date based on selected play days
+        function getNextManualPlayDate(fromDate) {
+            const ms = state.manualSettings;
+            const dayMap = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+            const playDayNums = ms.playDays.map(d => dayMap[d]).sort((a, b) => a - b);
+            
+            if (playDayNums.length === 0) return fromDate;
+            
+            let date = new Date(fromDate);
+            date.setDate(date.getDate() + 7); // Start from next week
+            
+            // Find next valid play day
+            for (let i = 0; i < 14; i++) {
+                if (playDayNums.includes(date.getDay())) {
+                    break;
+                }
+                date.setDate(date.getDate() + 1);
+            }
+            
+            return date.toISOString().split('T')[0];
+        }
+        
+        // Update start date and set initial date
+        function updateManualStartDate(dateStr) {
+            const ms = state.manualSettings;
+            ms.startDate = dateStr;
+            
+            // Also set the match date if not already set
+            if (!state.manualMatch.date) {
+                state.manualMatch.date = dateStr;
+            }
+            
+            render();
+        }
+        window.updateManualStartDate = updateManualStartDate;
+        
+        // Toggle play day selection for manual entry
+        function toggleManualPlayDay(day) {
+            const days = state.manualSettings.playDays;
+            const idx = days.indexOf(day);
+            if (idx > -1) {
+                days.splice(idx, 1);
+            } else {
+                days.push(day);
+            }
+            render();
+        }
+        window.toggleManualPlayDay = toggleManualPlayDay;
+        
+        // Add position night
+        async function addPositionNight() {
+            const week = document.getElementById('position-week')?.value;
+            const date = document.getElementById('position-date')?.value;
+            const half = document.getElementById('position-half')?.value || '1';
+            
+            if (!week || !date) {
+                alert('Please enter week number and date for position night');
+                return;
+            }
+            
+            if (!state.currentSeason?.id || !state.organization?.id) {
+                alert('No season or organization loaded');
+                return;
+            }
+            
+            const numTeams = state.teams.length;
+            const numPositionMatches = Math.floor(numTeams / 2);
+            
+            showLoading();
+            try {
+                const scheduleEntries = [];
+                
+                for (let pos = 0; pos < numPositionMatches; pos++) {
+                    const position1 = (pos * 2) + 1;
+                    const position2 = (pos * 2) + 2;
+                    
+                    scheduleEntries.push({
+                        week: week,
+                        date: date,
+                        home_team_id: `POSITION_${position1}`,
+                        away_team_id: `POSITION_${position2}`,
+                        venue: 'TBD - Based on Standings',
+                        is_bye: false,
+                        half: parseInt(half),
+                        is_position_night: true,
+                        position_home: position1,
+                        position_away: position2,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    });
+                }
+                
+                // If odd number of teams, last place gets a bye
+                if (numTeams % 2 === 1) {
+                    scheduleEntries.push({
+                        week: week,
+                        date: date,
+                        home_team_id: `POSITION_${numTeams}`,
+                        away_team_id: 'BYE',
+                        venue: 'BYE WEEK',
+                        is_bye: true,
+                        half: parseInt(half),
+                        is_position_night: true,
+                        position_home: numTeams,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    });
+                }
+                
+                const { data, error } = await db.from('schedule').insert(scheduleEntries).select();
+                
+                if (error) throw error;
+                
+                // Add to state
+                data.forEach(s => {
+                    state.schedule.push({
+                        id: s.id,
+                        week: s.week,
+                        date: s.date,
+                        homeTeamId: s.home_team_id,
+                        awayTeamId: s.away_team_id,
+                        venue: s.venue,
+                        isBye: s.is_bye,
+                        half: s.half,
+                        isPositionNight: s.is_position_night,
+                        positionHome: s.position_home,
+                        positionAway: s.position_away,
+                        seasonId: s.season_id,
+                        orgId: s.org_id
+                    });
+                });
+                
+                // Sort and update week counter
+                state.schedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
+                state.manualSettings.currentWeek = parseInt(week) + 1;
+                
+                alert(`Position night added! ${numPositionMatches} matches${numTeams % 2 === 1 ? ' + 1 bye' : ''}`);
+                render();
+            } catch (error) {
+                console.error('Error adding position night:', error);
+                alert('Error adding position night: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+        window.addPositionNight = addPositionNight;
 
         // ============================================
         // CSV IMPORT
@@ -2228,10 +2395,13 @@
         // Manual schedule entry form
         function renderManualScheduleEntry() {
             const m = state.manualMatch;
+            const ms = state.manualSettings;
+            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            
             return `
                 <div class="bg-white rounded-xl shadow-lg p-6">
                     <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-xl font-bold">✏️ Add Match Manually</h3>
+                        <h3 class="text-xl font-bold">✏️ Manual Schedule Entry</h3>
                         <button onclick="window.state.scheduleMode = 'choose'; window.render();" 
                             class="text-sm text-slate-600 hover:text-slate-800">← Back to options</button>
                     </div>
@@ -2242,67 +2412,140 @@
                         </p>
                     </div>
                     
-                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Week Number *</label>
-                            <input type="text" id="manual-week" value="${m.week}" 
-                                onchange="window.state.manualMatch.week = this.value;"
-                                placeholder="e.g., 1" 
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                    <!-- Schedule Settings -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-blue-800 mb-3">📅 Schedule Settings</h4>
+                        
+                        <div class="grid md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Start Date</label>
+                                <input type="date" id="manual-start-date" value="${ms.startDate}"
+                                    onchange="updateManualStartDate(this.value)"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Current Week: ${ms.currentWeek}</label>
+                                <p class="text-xs text-slate-500 mt-1">Auto-increments when you add a match</p>
+                            </div>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Date *</label>
-                            <input type="date" id="manual-date" value="${m.date}"
-                                onchange="window.state.manualMatch.date = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Half</label>
-                            <select id="manual-half" 
-                                onchange="window.state.manualMatch.half = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="1" ${m.half === '1' ? 'selected' : ''}>1st Half</option>
-                                <option value="2" ${m.half === '2' ? 'selected' : ''}>2nd Half</option>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Home Team *</label>
-                            <select id="manual-home" 
-                                onchange="window.state.manualMatch.homeTeamId = this.value; updateManualVenue();"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="">Select home team...</option>
-                                ${state.teams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Away Team</label>
-                            <select id="manual-away" 
-                                onchange="window.state.manualMatch.awayTeamId = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="">Select away team...</option>
-                                <option value="BYE" ${m.awayTeamId === 'BYE' ? 'selected' : ''}>🏖️ BYE WEEK</option>
-                                ${state.teams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Venue</label>
-                            <input type="text" id="manual-venue" value="${m.venue}"
-                                onchange="window.state.manualMatch.venue = this.value;"
-                                placeholder="Auto-fills from home team" 
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Play Days</label>
+                            <div class="flex flex-wrap gap-2">
+                                ${days.map(day => `
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all
+                                        ${ms.playDays.includes(day) ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}">
+                                        <input type="checkbox" 
+                                            ${ms.playDays.includes(day) ? 'checked' : ''} 
+                                            onchange="toggleManualPlayDay('${day}')"
+                                            class="sr-only">
+                                        <span class="font-medium text-sm capitalize">${day.slice(0,3)}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="flex gap-4">
-                        <button onclick="addManualMatch()" 
-                            class="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
-                            ➕ Add Match
+                    <!-- Add Match Form -->
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-slate-800 mb-3">➕ Add Match</h4>
+                        
+                        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Week Number</label>
+                                <input type="number" id="manual-week" value="${m.week}" 
+                                    onchange="window.state.manualMatch.week = this.value;"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Date</label>
+                                <input type="date" id="manual-date" value="${m.date}"
+                                    onchange="window.state.manualMatch.date = this.value;"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Half</label>
+                                <select id="manual-half" 
+                                    onchange="window.state.manualMatch.half = this.value;"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                    <option value="1" ${m.half === '1' ? 'selected' : ''}>1st Half</option>
+                                    <option value="2" ${m.half === '2' ? 'selected' : ''}>2nd Half</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Home Team *</label>
+                                <select id="manual-home" 
+                                    onchange="window.state.manualMatch.homeTeamId = this.value; updateManualVenue();"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                    <option value="">Select home team...</option>
+                                    ${state.teams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Away Team</label>
+                                <select id="manual-away" 
+                                    onchange="window.state.manualMatch.awayTeamId = this.value;"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                    <option value="">Select away team...</option>
+                                    <option value="BYE" ${m.awayTeamId === 'BYE' ? 'selected' : ''}>🏖️ BYE WEEK</option>
+                                    ${state.teams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Venue</label>
+                                <input type="text" id="manual-venue" value="${m.venue}"
+                                    onchange="window.state.manualMatch.venue = this.value;"
+                                    placeholder="Auto-fills from home team" 
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-4">
+                            <button onclick="addManualMatch()" 
+                                class="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
+                                ➕ Add Match
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Add Position Night -->
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-purple-800 mb-3">🏆 Add Position Night</h4>
+                        <p class="text-sm text-purple-700 mb-3">Position nights match teams by standings (1st vs 2nd, 3rd vs 4th, etc.)</p>
+                        
+                        <div class="grid md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Week Number</label>
+                                <input type="number" id="position-week" value="${ms.currentWeek}" 
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-purple-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Date</label>
+                                <input type="date" id="position-date" value="${m.date}"
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-purple-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">Half</label>
+                                <select id="position-half" 
+                                    class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-purple-500">
+                                    <option value="1">1st Half</option>
+                                    <option value="2">2nd Half</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button onclick="addPositionNight()" 
+                            class="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700">
+                            🏆 Add Position Night (${Math.floor(state.teams.length / 2)} matches)
                         </button>
+                    </div>
+                    
+                    <div class="flex justify-end">
                         <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
                             class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
                             Done
@@ -2310,30 +2553,40 @@
                     </div>
                 </div>
                 
-                <!-- Recently Added Preview -->
+                <!-- Current Schedule Preview -->
                 ${state.schedule.length > 0 ? `
-                <div class="bg-white rounded-xl shadow-lg p-6">
-                    <h4 class="font-bold mb-4">Current Schedule (${state.schedule.length} matches)</h4>
+                <div class="bg-white rounded-xl shadow-lg p-6 mt-6">
+                    <h4 class="font-bold mb-4">Current Schedule (${state.schedule.length} entries)</h4>
                     <div class="max-h-64 overflow-y-auto">
                         <table class="w-full text-sm">
                             <thead class="bg-slate-50 sticky top-0">
                                 <tr>
                                     <th class="px-3 py-2 text-left">Week</th>
                                     <th class="px-3 py-2 text-left">Date</th>
+                                    <th class="px-3 py-2 text-left">Type</th>
                                     <th class="px-3 py-2 text-left">Matchup</th>
                                     <th class="px-3 py-2 text-left">Venue</th>
                                     <th class="px-3 py-2"></th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y">
-                                ${state.schedule.slice(-10).reverse().map(s => {
+                                ${state.schedule.sort((a,b) => parseInt(a.week) - parseInt(b.week)).map(s => {
                                     const home = state.teams.find(t => t.id === s.homeTeamId);
                                     const away = state.teams.find(t => t.id === s.awayTeamId);
+                                    const typeLabel = s.isPositionNight ? '<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">Position</span>' 
+                                        : s.isBye ? '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">Bye</span>'
+                                        : '<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Match</span>';
+                                    const matchup = s.isPositionNight 
+                                        ? `${s.positionAway || '?'}th vs ${s.positionHome || '?'}th place`
+                                        : s.isBye 
+                                            ? (home?.name || '?') + ' - BYE' 
+                                            : (away?.name || '?') + ' @ ' + (home?.name || '?');
                                     return `
-                                        <tr class="hover:bg-slate-50">
-                                            <td class="px-3 py-2">${s.week}</td>
+                                        <tr class="hover:bg-slate-50 ${s.isPositionNight ? 'bg-purple-50' : ''}">
+                                            <td class="px-3 py-2 font-semibold">${s.week}</td>
                                             <td class="px-3 py-2">${s.date}</td>
-                                            <td class="px-3 py-2">${s.isBye ? home?.name + ' - BYE' : (away?.name || '?') + ' @ ' + (home?.name || '?')}</td>
+                                            <td class="px-3 py-2">${typeLabel}</td>
+                                            <td class="px-3 py-2">${matchup}</td>
                                             <td class="px-3 py-2 text-slate-600">${s.venue || '-'}</td>
                                             <td class="px-3 py-2">
                                                 <button onclick="deleteScheduleMatch('${s.id}')" class="text-red-500 hover:text-red-700">🗑️</button>
