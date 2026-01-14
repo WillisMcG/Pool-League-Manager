@@ -1022,7 +1022,15 @@
                 state.teams = state.teams.map(t => t.id === teamId ? { ...t, players: newPlayers } : t);
                 render();
 
-                // Create user account
+                // Ask if this player is a captain who needs to submit scores
+                const isCaptain = confirm(`Is ${playerName} a team captain who will submit scores?\n\nCaptains need a login account and phone number for SMS score submission.\n\nClick OK for Captain, Cancel for regular player.`);
+                
+                if (!isCaptain) {
+                    alert(`Player "${playerName}" added to roster.`);
+                    return;
+                }
+
+                // Create user account for captains
                 const baseUsername = playerName.toLowerCase().replace(/[^a-z0-9]/g, '');
                 let username = baseUsername;
                 let counter = 1;
@@ -1031,17 +1039,17 @@
                 }
 
                 const defaultPassword = 'pool' + Math.floor(Math.random() * 1000);
-                const phone = prompt(`Enter phone number for ${playerName}:`);
+                const phone = prompt(`Enter phone number for ${playerName}:\n\n(Required for SMS score submissions)`);
 
                 if (!phone || phone.length < 10) {
-                    alert('Player added but no user account created (phone required).');
+                    alert(`Player added to roster but no login account created.\n\nTo add login later, create a user account in the Users tab.`);
                     return;
                 }
 
                 const { data: userData } = await db.from('users').insert([{
                     username, password: defaultPassword, phone: phone.trim(),
                     role: 'captain', team_id: teamId, player_id: playerId,
-                    created_by: state.currentUser.id
+                    created_by: state.currentUser.id, org_id: state.organization.id
                 }]).select().single();
 
                 state.users = [...state.users, {
@@ -1050,7 +1058,7 @@
                     playerId: userData.player_id
                 }];
 
-                alert(`Player added!\n\nUsername: ${username}\nPassword: ${defaultPassword}`);
+                alert(`Captain added!\n\nUsername: ${username}\nPassword: ${defaultPassword}\nPhone: ${phone}\n\nShare these credentials with ${playerName}.`);
                 render();
             } catch (error) {
                 console.error('Error adding player:', error);
