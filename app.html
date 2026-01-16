@@ -356,7 +356,7 @@
                 // Don't show if it's the other team in this match
                 if (t.id === otherValue) return false;
                 return true;
-            });
+            }).sort((a, b) => a.name.localeCompare(b.name));
         }
         
         function validateWeekMatches() {
@@ -2593,7 +2593,7 @@
             const allVenues = [...new Set([
                 ...state.venues,
                 ...state.teams.map(t => t.venue).filter(v => v && v.trim())
-            ])].filter(v => v);
+            ])].filter(v => v).sort((a, b) => a.localeCompare(b));
             
             return `
                 <div class="bg-white rounded-xl shadow-lg p-6">
@@ -2720,6 +2720,7 @@
         
         // Single match entry form
         function renderSingleMatchEntry(m, allVenues) {
+            const sortedTeams = [...state.teams].sort((a, b) => a.name.localeCompare(b.name));
             return `
                 <div class="grid md:grid-cols-3 gap-4 mb-6">
                     <div>
@@ -2729,7 +2730,7 @@
                             class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
                             <option value="">Select away team...</option>
                             <option value="BYE" ${m.awayTeamId === 'BYE' ? 'selected' : ''}>🏖️ BYE WEEK</option>
-                            ${state.teams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                            ${sortedTeams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                         </select>
                     </div>
                     
@@ -2739,7 +2740,7 @@
                             onchange="window.state.manualMatch.homeTeamId = this.value; updateManualVenue();"
                             class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
                             <option value="">Select home team...</option>
-                            ${state.teams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                            ${sortedTeams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                         </select>
                     </div>
                     
@@ -3720,7 +3721,7 @@
                                 <label class="block text-sm font-bold mb-2">Your Team</label>
                                 <select onchange="state.selectedTeam = this.value; window.render();" class="w-full px-4 py-3 border-2 rounded-lg">
                                     <option value="">Select team...</option>
-                                    ${state.teams.map(t => `<option value="${t.id}" ${state.selectedTeam === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                    ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${state.selectedTeam === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                                 </select>
                             </div>
                             ` : ''}
@@ -3739,7 +3740,7 @@
                                             <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
                                             <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
                                                 <option value="">Select...</option>
-                                                ${home.players.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                                ${[...home.players].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                             </select>
                                             <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
                                         </div>
@@ -3747,7 +3748,7 @@
                                             <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
                                             <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
                                                 <option value="">Select...</option>
-                                                ${away.players.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                                ${[...away.players].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                             </select>
                                             <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
                                         </div>
@@ -3967,13 +3968,14 @@
                     </div>
                     ` : ''}
 
-                    ${state.teams.map(team => {
+                    ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(team => {
                         // Players can view but not edit, even their own team
                         const canEdit = isAdmin || (isCaptain && myTeamId === team.id);
                         const venueData = state.venues.find(v => (typeof v === 'string' ? v : v.name) === team.venue);
                         const venueObj = venueData ? (typeof venueData === 'string' ? { name: venueData } : venueData) : null;
                         const venuePhone = venueObj && venueObj.phone ? venueObj.phone.replace(/[^0-9+]/g, '') : '';
                         const venueAddress = venueObj && venueObj.address ? encodeURIComponent(venueObj.address) : '';
+                        const sortedPlayers = [...team.players].sort((a, b) => a.name.localeCompare(b.name));
                         
                         return `
                         <div class="bg-white rounded-xl shadow-lg p-6 ${myTeamId === team.id ? 'border-2 border-emerald-400' : ''}">
@@ -3992,7 +3994,7 @@
                             <div class="border-t pt-4">
                                 <h4 class="font-bold mb-2">Players (${team.players.length})</h4>
                                 <div class="grid sm:grid-cols-2 gap-2 mb-4">
-                                    ${team.players.map(p => `
+                                    ${sortedPlayers.map(p => `
                                         <div class="flex justify-between items-center bg-slate-50 p-2 rounded border">
                                             <span>${p.name}</span>
                                             ${canEdit ? `<button onclick="removePlayer('${team.id}', '${p.id}')" class="text-red-600 text-sm">❌</button>` : ''}
@@ -4047,7 +4049,7 @@
                                 </select>
                                 <select id="new-user-team" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="">No team</option>
-                                    ${state.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                                    ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
                                 </select>
                             ` : `<p class="text-xs text-slate-500">New member will be added to your team as a player</p>`}
                             <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
@@ -4072,7 +4074,7 @@
                                     <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
                                     <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
                                         <option value="">No team</option>
-                                        ${state.teams.map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                        ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
                                     </select>
                                     <button onclick="deleteUser('${user.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
                                 ` : ''}
