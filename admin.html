@@ -32,7 +32,8 @@
                 </div>
                 <div class="space-y-4">
                     <input type="password" id="admin-password" placeholder="Admin Password" 
-                        class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-purple-500 focus:outline-none">
+                        class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                        onkeypress="if(event.key === 'Enter') login()">
                     <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"></div>
                     <button onclick="login()" class="w-full py-4 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700">
                         Access Dashboard
@@ -53,194 +54,205 @@
                             <p class="text-purple-200 text-sm">Pool League Manager</p>
                         </div>
                     </div>
-                    <button onclick="logout()" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold">
+                    <button onclick="logout()" class="px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 font-semibold">
                         Logout
                     </button>
                 </div>
             </header>
 
-            <!-- Navigation -->
+            <!-- Navigation Tabs -->
             <nav class="bg-white shadow-md border-b">
-                <div class="max-w-7xl mx-auto px-4 flex gap-1">
-                    <button onclick="showTab('overview')" id="tab-overview" class="tab-btn px-6 py-4 font-semibold border-b-4 border-purple-600 text-purple-700">
+                <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
+                    <button onclick="switchTab('overview')" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent hover:text-purple-600" data-tab="overview">
                         📊 Overview
                     </button>
-                    <button onclick="showTab('organizations')" id="tab-organizations" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent text-slate-600 hover:text-purple-600">
+                    <button onclick="switchTab('organizations')" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent hover:text-purple-600" data-tab="organizations">
                         🏢 Organizations
                     </button>
-                    <button onclick="showTab('users')" id="tab-users" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent text-slate-600 hover:text-purple-600">
-                        👥 All Users
+                    <button onclick="switchTab('users')" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent hover:text-purple-600" data-tab="users">
+                        👥 Users
                     </button>
-                    <button onclick="showTab('subscriptions')" id="tab-subscriptions" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent text-slate-600 hover:text-purple-600">
-                        💳 Subscriptions
+                    <button onclick="switchTab('logins')" class="tab-btn px-6 py-4 font-semibold border-b-4 border-transparent hover:text-purple-600" data-tab="logins">
+                        📈 Login Stats
                     </button>
                 </div>
             </nav>
 
-            <!-- Main Content -->
-            <main class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Content -->
+            <main class="max-w-7xl mx-auto p-4 md:p-6">
                 <!-- Overview Tab -->
-                <div id="content-overview" class="tab-content">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <div class="stat-card bg-white rounded-xl shadow-lg p-6">
-                            <div class="flex items-center gap-4">
-                                <div class="text-4xl">🏢</div>
-                                <div>
-                                    <div id="stat-orgs" class="text-3xl font-black text-slate-800">-</div>
-                                    <div class="text-slate-600">Organizations</div>
-                                </div>
-                            </div>
+                <div id="tab-overview" class="tab-content">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="stat-card bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
+                            <div class="text-3xl font-black text-purple-600" id="stat-orgs">-</div>
+                            <div class="text-slate-600">Organizations</div>
                         </div>
-                        <div class="stat-card bg-white rounded-xl shadow-lg p-6">
-                            <div class="flex items-center gap-4">
-                                <div class="text-4xl">👥</div>
-                                <div>
-                                    <div id="stat-users" class="text-3xl font-black text-slate-800">-</div>
-                                    <div class="text-slate-600">Total Users</div>
-                                </div>
-                            </div>
+                        <div class="stat-card bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+                            <div class="text-3xl font-black text-blue-600" id="stat-users">-</div>
+                            <div class="text-slate-600">Total Users</div>
                         </div>
-                        <div class="stat-card bg-white rounded-xl shadow-lg p-6">
-                            <div class="flex items-center gap-4">
-                                <div class="text-4xl">✅</div>
-                                <div>
-                                    <div id="stat-active" class="text-3xl font-black text-emerald-600">-</div>
-                                    <div class="text-slate-600">Active Subs</div>
-                                </div>
-                            </div>
+                        <div class="stat-card bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+                            <div class="text-3xl font-black text-green-600" id="stat-active">-</div>
+                            <div class="text-slate-600">Active Subscriptions</div>
                         </div>
-                        <div class="stat-card bg-white rounded-xl shadow-lg p-6">
-                            <div class="flex items-center gap-4">
-                                <div class="text-4xl">⏰</div>
-                                <div>
-                                    <div id="stat-trial" class="text-3xl font-black text-yellow-600">-</div>
-                                    <div class="text-slate-600">On Trial</div>
-                                </div>
-                            </div>
+                        <div class="stat-card bg-white rounded-xl shadow-lg p-6 border-l-4 border-amber-500">
+                            <div class="text-3xl font-black text-amber-600" id="stat-trials">-</div>
+                            <div class="text-slate-600">Trials</div>
                         </div>
                     </div>
 
+                    <!-- Recent Activity -->
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-xl font-bold mb-4">📈 Recent Activity</h2>
-                        <div id="recent-activity" class="space-y-3">
-                            <p class="text-slate-500">Loading...</p>
-                        </div>
+                        <h2 class="text-xl font-bold mb-4">📈 Recent Logins (Last 24 Hours)</h2>
+                        <div id="recent-logins" class="space-y-2">Loading...</div>
                     </div>
                 </div>
 
                 <!-- Organizations Tab -->
-                <div id="content-organizations" class="tab-content hidden">
-                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-                        <div class="flex items-center gap-4 mb-4">
-                            <input type="text" id="search-orgs" placeholder="Search organizations..." 
-                                class="flex-1 px-4 py-2 border-2 rounded-lg" onkeyup="filterOrgs()">
-                            <select id="filter-status" class="px-4 py-2 border-2 rounded-lg" onchange="filterOrgs()">
-                                <option value="">All Status</option>
-                                <option value="active">Active</option>
-                                <option value="trial">Trial</option>
-                                <option value="canceled">Canceled</option>
-                            </select>
-                        </div>
-                    </div>
-
+                <div id="tab-organizations" class="tab-content hidden">
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-slate-100">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Organization</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Owner</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Status</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Tier</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Users</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Teams</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Created</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="orgs-table" class="divide-y">
-                                <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
-                            </tbody>
-                        </table>
+                        <div class="p-4 border-b flex justify-between items-center">
+                            <h2 class="text-xl font-bold">🏢 All Organizations</h2>
+                            <input type="text" id="org-search" placeholder="Search..." 
+                                class="px-4 py-2 border rounded-lg" onkeyup="filterOrgs()">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-100">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">Name</th>
+                                        <th class="px-4 py-3 text-left">Slug</th>
+                                        <th class="px-4 py-3 text-center">Status</th>
+                                        <th class="px-4 py-3 text-center">Tier</th>
+                                        <th class="px-4 py-3 text-center">Users</th>
+                                        <th class="px-4 py-3 text-center">Created</th>
+                                        <th class="px-4 py-3 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orgs-table" class="divide-y">
+                                    <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Users Tab -->
-                <div id="content-users" class="tab-content hidden">
-                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-                        <div class="flex items-center gap-4">
-                            <input type="text" id="search-users" placeholder="Search users by name, email, or phone..." 
-                                class="flex-1 px-4 py-2 border-2 rounded-lg" onkeyup="filterUsers()">
-                            <select id="filter-role" class="px-4 py-2 border-2 rounded-lg" onchange="filterUsers()">
-                                <option value="">All Roles</option>
-                                <option value="admin">Admin</option>
-                                <option value="captain">Captain</option>
-                                <option value="player">Player</option>
-                            </select>
-                        </div>
-                    </div>
-
+                <div id="tab-users" class="tab-content hidden">
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-slate-100">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">User</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Organization</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Role</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Phone</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Created</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="users-table" class="divide-y">
-                                <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
-                            </tbody>
-                        </table>
+                        <div class="p-4 border-b flex justify-between items-center flex-wrap gap-2">
+                            <h2 class="text-xl font-bold">👥 All Users</h2>
+                            <div class="flex gap-2">
+                                <select id="user-org-filter" onchange="filterUsers()" class="px-3 py-2 border rounded-lg">
+                                    <option value="">All Organizations</option>
+                                </select>
+                                <input type="text" id="user-search" placeholder="Search..." 
+                                    class="px-4 py-2 border rounded-lg" onkeyup="filterUsers()">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-100">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">Username</th>
+                                        <th class="px-4 py-3 text-left">Organization</th>
+                                        <th class="px-4 py-3 text-center">Role</th>
+                                        <th class="px-4 py-3 text-center">Phone</th>
+                                        <th class="px-4 py-3 text-center">Last Login</th>
+                                        <th class="px-4 py-3 text-center">Login Count</th>
+                                        <th class="px-4 py-3 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-table" class="divide-y">
+                                    <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Subscriptions Tab -->
-                <div id="content-subscriptions" class="tab-content hidden">
+                <!-- Login Stats Tab -->
+                <div id="tab-logins" class="tab-content hidden">
                     <div class="grid md:grid-cols-3 gap-6 mb-6">
-                        <div class="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-6">
-                            <h3 class="font-bold text-emerald-800 mb-2">💰 Monthly Revenue</h3>
-                            <div id="stat-revenue" class="text-3xl font-black text-emerald-600">$0</div>
+                        <div class="bg-white rounded-xl shadow-lg p-6">
+                            <h3 class="text-lg font-bold mb-2">📊 Login Summary</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-600">Total Logins (all time)</span>
+                                    <span class="font-bold" id="total-logins">-</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-600">Logins Today</span>
+                                    <span class="font-bold text-green-600" id="logins-today">-</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-600">Logins This Week</span>
+                                    <span class="font-bold text-blue-600" id="logins-week">-</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-600">Users Never Logged In</span>
+                                    <span class="font-bold text-amber-600" id="never-logged">-</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
-                            <h3 class="font-bold text-blue-800 mb-2">📊 Starter Plans</h3>
-                            <div id="stat-starter" class="text-3xl font-black text-blue-600">0</div>
+                        <div class="bg-white rounded-xl shadow-lg p-6">
+                            <h3 class="text-lg font-bold mb-2">🏆 Top Users by Logins</h3>
+                            <div id="top-users" class="space-y-2">Loading...</div>
                         </div>
-                        <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-6">
-                            <h3 class="font-bold text-purple-800 mb-2">⭐ Pro Plans</h3>
-                            <div id="stat-pro" class="text-3xl font-black text-purple-600">0</div>
+                        <div class="bg-white rounded-xl shadow-lg p-6">
+                            <h3 class="text-lg font-bold mb-2">🏢 Top Orgs by Activity</h3>
+                            <div id="top-orgs" class="space-y-2">Loading...</div>
                         </div>
                     </div>
 
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-slate-100">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Organization</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Status</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Tier</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Billing</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Trial Ends</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Stripe Customer</th>
-                                    <th class="px-4 py-3 text-left text-sm font-bold">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="subs-table" class="divide-y">
-                                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                        <h3 class="text-lg font-bold mb-4">📅 Recent Login Activity</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-100">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">User</th>
+                                        <th class="px-4 py-3 text-left">Organization</th>
+                                        <th class="px-4 py-3 text-center">Role</th>
+                                        <th class="px-4 py-3 text-center">Last Login</th>
+                                        <th class="px-4 py-3 text-center">Total Logins</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="login-activity-table" class="divide-y">
+                                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-lg font-bold mb-4">⚠️ Users Who Haven't Logged In Recently</h3>
+                        <p class="text-sm text-slate-600 mb-4">Users who haven't logged in for more than 30 days</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-100">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">User</th>
+                                        <th class="px-4 py-3 text-left">Organization</th>
+                                        <th class="px-4 py-3 text-center">Last Login</th>
+                                        <th class="px-4 py-3 text-center">Days Inactive</th>
+                                        <th class="px-4 py-3 text-center">Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inactive-users-table" class="divide-y">
+                                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </main>
         </div>
 
-        <!-- Reset Password Modal -->
+        <!-- Password Reset Modal -->
         <div id="reset-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4">
-                <h2 class="text-2xl font-bold mb-4">🔐 Reset Password</h2>
+                <h2 class="text-2xl font-bold mb-4">🔑 Reset Password</h2>
                 <div id="reset-user-info" class="bg-slate-50 p-4 rounded-lg mb-4"></div>
                 <div class="space-y-4">
                     <div>
@@ -284,13 +296,20 @@
         
         // CHANGE THIS to your own secure password!
         const SUPER_ADMIN_PASSWORD = 'PoolLeagueAdmin2025!';
-        
-        const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // State
-        let organizations = [];
-        let users = [];
-        let selectedUserId = null;
+        // ============================================
+        // INITIALIZE SUPABASE
+        // ============================================
+        const { createClient } = supabase;
+        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ============================================
+        // STATE
+        // ============================================
+        let allOrgs = [];
+        let allUsers = [];
+        let currentTab = 'overview';
+        let resetUserId = null;
 
         // ============================================
         // AUTH
@@ -298,10 +317,10 @@
         function login() {
             const password = document.getElementById('admin-password').value;
             if (password === SUPER_ADMIN_PASSWORD) {
-                sessionStorage.setItem('super_admin', 'true');
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('dashboard').classList.remove('hidden');
-                loadAllData();
+                localStorage.setItem('plm_admin_session', 'true');
+                loadDashboard();
             } else {
                 document.getElementById('login-error').textContent = 'Invalid password';
                 document.getElementById('login-error').classList.remove('hidden');
@@ -309,229 +328,320 @@
         }
 
         function logout() {
-            sessionStorage.removeItem('super_admin');
-            location.reload();
+            localStorage.removeItem('plm_admin_session');
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('admin-password').value = '';
         }
 
-        function checkAuth() {
-            if (sessionStorage.getItem('super_admin') === 'true') {
+        function checkSession() {
+            if (localStorage.getItem('plm_admin_session') === 'true') {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('dashboard').classList.remove('hidden');
-                loadAllData();
+                loadDashboard();
             }
         }
 
         // ============================================
-        // DATA LOADING
+        // TABS
         // ============================================
-        async function loadAllData() {
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-purple-600', 'border-purple-600');
+                btn.classList.add('border-transparent');
+            });
+            document.querySelector(`[data-tab="${tab}"]`).classList.add('text-purple-600', 'border-purple-600');
+        }
+
+        // ============================================
+        // LOAD DATA
+        // ============================================
+        async function loadDashboard() {
+            switchTab('overview');
             await Promise.all([
                 loadOrganizations(),
                 loadUsers()
             ]);
             updateStats();
-            updateRecentActivity();
+            updateRecentLogins();
+            updateLoginStats();
         }
 
         async function loadOrganizations() {
             const { data, error } = await db.from('organizations').select('*').order('created_at', { ascending: false });
-            if (data) {
-                organizations = data;
-                renderOrgsTable();
-                renderSubsTable();
+            if (error) {
+                console.error('Error loading orgs:', error);
+                return;
             }
+            allOrgs = data || [];
+            renderOrgsTable();
+            updateOrgFilter();
         }
 
         async function loadUsers() {
-            const { data, error } = await db.from('users').select('*').order('created_at', { ascending: false });
-            if (data) {
-                users = data;
-                renderUsersTable();
+            const { data, error } = await db.from('users').select('*').order('last_login', { ascending: false, nullsFirst: false });
+            if (error) {
+                console.error('Error loading users:', error);
+                return;
             }
+            allUsers = data || [];
+            renderUsersTable();
         }
 
         // ============================================
         // STATS
         // ============================================
         function updateStats() {
-            document.getElementById('stat-orgs').textContent = organizations.length;
-            document.getElementById('stat-users').textContent = users.length;
-            
-            const active = organizations.filter(o => o.subscription_status === 'active').length;
-            const trial = organizations.filter(o => o.subscription_status === 'trial').length;
-            
-            document.getElementById('stat-active').textContent = active;
-            document.getElementById('stat-trial').textContent = trial;
-
-            // Revenue calculation
-            const starter = organizations.filter(o => o.subscription_status === 'active' && o.subscription_tier === 'starter').length;
-            const pro = organizations.filter(o => o.subscription_status === 'active' && o.subscription_tier === 'pro').length;
-            const revenue = (starter * 19) + (pro * 39);
-            
-            document.getElementById('stat-revenue').textContent = '$' + revenue;
-            document.getElementById('stat-starter').textContent = starter;
-            document.getElementById('stat-pro').textContent = pro;
+            document.getElementById('stat-orgs').textContent = allOrgs.length;
+            document.getElementById('stat-users').textContent = allUsers.length;
+            document.getElementById('stat-active').textContent = allOrgs.filter(o => o.subscription_status === 'active').length;
+            document.getElementById('stat-trials').textContent = allOrgs.filter(o => o.subscription_status === 'trial').length;
         }
 
-        function updateRecentActivity() {
-            const recent = [...organizations]
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-                .slice(0, 5);
-            
-            const html = recent.map(org => {
-                const date = new Date(org.created_at).toLocaleDateString();
+        function updateRecentLogins() {
+            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const recentLogins = allUsers
+                .filter(u => u.last_login && new Date(u.last_login) > yesterday)
+                .sort((a, b) => new Date(b.last_login) - new Date(a.last_login))
+                .slice(0, 10);
+
+            const container = document.getElementById('recent-logins');
+            if (recentLogins.length === 0) {
+                container.innerHTML = '<p class="text-slate-500">No logins in the last 24 hours</p>';
+                return;
+            }
+
+            container.innerHTML = recentLogins.map(u => {
+                const org = allOrgs.find(o => o.id === u.org_id);
+                const timeAgo = formatTimeAgo(u.last_login);
                 return `
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
                         <div>
-                            <span class="font-semibold">${org.name}</span>
-                            <span class="text-slate-500 text-sm ml-2">signed up</span>
+                            <span class="font-semibold">${u.username}</span>
+                            <span class="text-slate-500 text-sm ml-2">${org?.name || 'Unknown'}</span>
                         </div>
-                        <span class="text-slate-500 text-sm">${date}</span>
+                        <span class="text-sm text-slate-500">${timeAgo}</span>
                     </div>
                 `;
             }).join('');
+        }
+
+        function updateLoginStats() {
+            // Total logins
+            const totalLogins = allUsers.reduce((sum, u) => sum + (u.login_count || 0), 0);
+            document.getElementById('total-logins').textContent = totalLogins.toLocaleString();
+
+            // Logins today
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const loginsToday = allUsers.filter(u => u.last_login && new Date(u.last_login) >= today).length;
+            document.getElementById('logins-today').textContent = loginsToday;
+
+            // Logins this week
+            const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const loginsWeek = allUsers.filter(u => u.last_login && new Date(u.last_login) >= weekAgo).length;
+            document.getElementById('logins-week').textContent = loginsWeek;
+
+            // Never logged in
+            const neverLogged = allUsers.filter(u => !u.last_login && !u.login_count).length;
+            document.getElementById('never-logged').textContent = neverLogged;
+
+            // Top users by logins
+            const topUsers = [...allUsers]
+                .filter(u => u.login_count > 0)
+                .sort((a, b) => (b.login_count || 0) - (a.login_count || 0))
+                .slice(0, 5);
             
-            document.getElementById('recent-activity').innerHTML = html || '<p class="text-slate-500">No recent activity</p>';
+            document.getElementById('top-users').innerHTML = topUsers.length === 0 
+                ? '<p class="text-slate-500 text-sm">No login data yet</p>'
+                : topUsers.map((u, i) => {
+                    const org = allOrgs.find(o => o.id === u.org_id);
+                    return `
+                        <div class="flex items-center justify-between p-2 ${i === 0 ? 'bg-yellow-50' : 'bg-slate-50'} rounded">
+                            <div>
+                                <span class="${i === 0 ? 'font-bold' : 'font-medium'}">${i + 1}. ${u.username}</span>
+                                <span class="text-slate-500 text-xs ml-1">${org?.name || ''}</span>
+                            </div>
+                            <span class="font-bold text-purple-600">${u.login_count || 0}</span>
+                        </div>
+                    `;
+                }).join('');
+
+            // Top orgs by activity
+            const orgActivity = {};
+            allUsers.forEach(u => {
+                if (u.org_id) {
+                    orgActivity[u.org_id] = (orgActivity[u.org_id] || 0) + (u.login_count || 0);
+                }
+            });
+            
+            const topOrgsActivity = Object.entries(orgActivity)
+                .map(([orgId, count]) => ({ org: allOrgs.find(o => o.id === orgId), count }))
+                .filter(o => o.org)
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5);
+
+            document.getElementById('top-orgs').innerHTML = topOrgsActivity.length === 0
+                ? '<p class="text-slate-500 text-sm">No activity data yet</p>'
+                : topOrgsActivity.map((o, i) => `
+                    <div class="flex items-center justify-between p-2 ${i === 0 ? 'bg-green-50' : 'bg-slate-50'} rounded">
+                        <span class="${i === 0 ? 'font-bold' : 'font-medium'}">${i + 1}. ${o.org.name}</span>
+                        <span class="font-bold text-green-600">${o.count} logins</span>
+                    </div>
+                `).join('');
+
+            // Recent login activity table
+            const recentActivity = [...allUsers]
+                .filter(u => u.last_login)
+                .sort((a, b) => new Date(b.last_login) - new Date(a.last_login))
+                .slice(0, 20);
+
+            document.getElementById('login-activity-table').innerHTML = recentActivity.length === 0
+                ? '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No login data available</td></tr>'
+                : recentActivity.map(u => {
+                    const org = allOrgs.find(o => o.id === u.org_id);
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-medium">${u.username}</td>
+                            <td class="px-4 py-3 text-slate-600">${org?.name || '-'}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}">
+                                    ${u.role || 'user'}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-center text-sm">${formatDateTime(u.last_login)}</td>
+                            <td class="px-4 py-3 text-center font-semibold">${u.login_count || 0}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            // Inactive users table (no login in 30+ days)
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const inactiveUsers = allUsers
+                .filter(u => {
+                    if (!u.last_login) return true; // Never logged in
+                    return new Date(u.last_login) < thirtyDaysAgo;
+                })
+                .sort((a, b) => {
+                    if (!a.last_login && !b.last_login) return 0;
+                    if (!a.last_login) return 1;
+                    if (!b.last_login) return -1;
+                    return new Date(a.last_login) - new Date(b.last_login);
+                })
+                .slice(0, 20);
+
+            document.getElementById('inactive-users-table').innerHTML = inactiveUsers.length === 0
+                ? '<tr><td colspan="5" class="px-4 py-8 text-center text-green-600">🎉 All users are active!</td></tr>'
+                : inactiveUsers.map(u => {
+                    const org = allOrgs.find(o => o.id === u.org_id);
+                    const daysInactive = u.last_login 
+                        ? Math.floor((Date.now() - new Date(u.last_login)) / (24 * 60 * 60 * 1000))
+                        : 'Never';
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-medium">${u.username}</td>
+                            <td class="px-4 py-3 text-slate-600">${org?.name || '-'}</td>
+                            <td class="px-4 py-3 text-center text-sm">${u.last_login ? formatDateTime(u.last_login) : '<span class="text-amber-600">Never</span>'}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded text-xs font-bold ${daysInactive === 'Never' ? 'bg-amber-100 text-amber-800' : daysInactive > 60 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}">
+                                    ${daysInactive === 'Never' ? 'Never' : daysInactive + ' days'}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-center text-sm text-slate-500">${formatDate(u.created_at)}</td>
+                        </tr>
+                    `;
+                }).join('');
         }
 
         // ============================================
-        // TABLES
+        // RENDER TABLES
         // ============================================
         function renderOrgsTable() {
-            const search = document.getElementById('search-orgs')?.value?.toLowerCase() || '';
-            const status = document.getElementById('filter-status')?.value || '';
-            
-            let filtered = organizations;
-            if (search) {
-                filtered = filtered.filter(o => o.name.toLowerCase().includes(search));
-            }
-            if (status) {
-                filtered = filtered.filter(o => o.subscription_status === status);
-            }
+            const search = (document.getElementById('org-search')?.value || '').toLowerCase();
+            const filtered = allOrgs.filter(o => 
+                o.name.toLowerCase().includes(search) || 
+                o.slug?.toLowerCase().includes(search)
+            );
 
-            const html = filtered.map(org => {
-                const owner = users.find(u => u.id === org.owner_id);
-                const orgUsers = users.filter(u => u.org_id === org.id).length;
-                const date = new Date(org.created_at).toLocaleDateString();
-                
-                const statusBadge = {
-                    'active': '<span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold">Active</span>',
-                    'trial': '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-bold">Trial</span>',
-                    'canceled': '<span class="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">Canceled</span>',
-                    'past_due': '<span class="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-bold">Past Due</span>'
-                }[org.subscription_status] || '<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded-full text-xs">Unknown</span>';
-
-                return `
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3">
-                            <div class="font-semibold">${org.name}</div>
-                            <div class="text-xs text-slate-500">${org.slug}</div>
-                        </td>
-                        <td class="px-4 py-3 text-sm">${owner?.username || '-'}</td>
-                        <td class="px-4 py-3">${statusBadge}</td>
-                        <td class="px-4 py-3 text-sm capitalize">${org.subscription_tier || '-'}</td>
-                        <td class="px-4 py-3 text-sm">${orgUsers}</td>
-                        <td class="px-4 py-3 text-sm">-</td>
-                        <td class="px-4 py-3 text-sm">${date}</td>
-                        <td class="px-4 py-3">
-                            <button onclick="viewOrg('${org.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold mr-2">
-                                Details
-                            </button>
-                            <button onclick="viewAsOrgAdmin('${org.id}')" class="text-emerald-600 hover:text-emerald-800 text-sm font-semibold">
-                                👁️ View As
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-
-            document.getElementById('orgs-table').innerHTML = html || '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">No organizations found</td></tr>';
+            document.getElementById('orgs-table').innerHTML = filtered.length === 0
+                ? '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No organizations found</td></tr>'
+                : filtered.map(org => {
+                    const userCount = allUsers.filter(u => u.org_id === org.id).length;
+                    const statusColors = {
+                        active: 'bg-green-100 text-green-800',
+                        trial: 'bg-yellow-100 text-yellow-800',
+                        expired: 'bg-red-100 text-red-800',
+                        canceled: 'bg-slate-100 text-slate-800'
+                    };
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-semibold">${org.name}</td>
+                            <td class="px-4 py-3 text-slate-600">${org.slug || '-'}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${statusColors[org.subscription_status] || 'bg-slate-100'}">
+                                    ${org.subscription_status || 'none'}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-center text-sm">${org.subscription_tier || '-'}</td>
+                            <td class="px-4 py-3 text-center font-semibold">${userCount}</td>
+                            <td class="px-4 py-3 text-center text-sm text-slate-500">${formatDate(org.created_at)}</td>
+                            <td class="px-4 py-3 text-center">
+                                <button onclick="viewOrgDetails('${org.id}')" class="text-purple-600 hover:text-purple-800 font-medium text-sm">
+                                    View Details
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
         }
 
         function renderUsersTable() {
-            const search = document.getElementById('search-users')?.value?.toLowerCase() || '';
-            const role = document.getElementById('filter-role')?.value || '';
+            const search = (document.getElementById('user-search')?.value || '').toLowerCase();
+            const orgFilter = document.getElementById('user-org-filter')?.value || '';
             
-            let filtered = users;
-            if (search) {
-                filtered = filtered.filter(u => 
-                    u.username?.toLowerCase().includes(search) || 
-                    u.phone?.includes(search)
-                );
-            }
-            if (role) {
-                filtered = filtered.filter(u => u.role === role);
-            }
+            const filtered = allUsers.filter(u => {
+                const matchesSearch = u.username.toLowerCase().includes(search) || 
+                    u.phone?.toLowerCase().includes(search);
+                const matchesOrg = !orgFilter || u.org_id === orgFilter;
+                return matchesSearch && matchesOrg;
+            });
 
-            const html = filtered.map(user => {
-                const org = organizations.find(o => o.id === user.org_id);
-                const date = new Date(user.created_at).toLocaleDateString();
-                
-                const roleBadge = {
-                    'admin': '<span class="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-bold">Admin</span>',
-                    'captain': '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">Captain</span>',
-                    'player': '<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded-full text-xs font-bold">Player</span>'
-                }[user.role] || '<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded-full text-xs">Unknown</span>';
-
-                return `
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3">
-                            <div class="font-semibold">${user.username}</div>
-                            <div class="text-xs text-slate-500">${user.id.slice(0, 8)}...</div>
-                        </td>
-                        <td class="px-4 py-3 text-sm">${org?.name || '-'}</td>
-                        <td class="px-4 py-3">${roleBadge}</td>
-                        <td class="px-4 py-3 text-sm">${user.phone || '-'}</td>
-                        <td class="px-4 py-3 text-sm">${date}</td>
-                        <td class="px-4 py-3">
-                            <button onclick="openResetModal('${user.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-semibold mr-2">
-                                Reset PW
-                            </button>
-                            ${user.role === 'admin' ? `<button onclick="impersonateUser('${user.id}')" class="text-emerald-600 hover:text-emerald-800 text-sm font-semibold">👁️ View As</button>` : ''}
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-
-            document.getElementById('users-table').innerHTML = html || '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No users found</td></tr>';
+            document.getElementById('users-table').innerHTML = filtered.length === 0
+                ? '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No users found</td></tr>'
+                : filtered.map(user => {
+                    const org = allOrgs.find(o => o.id === user.org_id);
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-semibold">${user.username}</td>
+                            <td class="px-4 py-3 text-slate-600">${org?.name || '-'}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100'}">
+                                    ${user.role || 'user'}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-center text-sm">${user.phone || '-'}</td>
+                            <td class="px-4 py-3 text-center text-sm">
+                                ${user.last_login ? formatDateTime(user.last_login) : '<span class="text-slate-400">Never</span>'}
+                            </td>
+                            <td class="px-4 py-3 text-center font-semibold">${user.login_count || 0}</td>
+                            <td class="px-4 py-3 text-center">
+                                <button onclick="openResetModal('${user.id}')" class="text-purple-600 hover:text-purple-800 font-medium text-sm">
+                                    Reset Password
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
         }
 
-        function renderSubsTable() {
-            const html = organizations.map(org => {
-                const trialEnds = org.trial_ends_at ? new Date(org.trial_ends_at).toLocaleDateString() : '-';
-                
-                const statusBadge = {
-                    'active': '<span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold">Active</span>',
-                    'trial': '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-bold">Trial</span>',
-                    'canceled': '<span class="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">Canceled</span>',
-                    'past_due': '<span class="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-bold">Past Due</span>'
-                }[org.subscription_status] || '<span class="px-2 py-1 bg-slate-100 text-slate-800 rounded-full text-xs">Unknown</span>';
-
-                return `
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3 font-semibold">${org.name}</td>
-                        <td class="px-4 py-3">${statusBadge}</td>
-                        <td class="px-4 py-3 text-sm capitalize">${org.subscription_tier || '-'}</td>
-                        <td class="px-4 py-3 text-sm capitalize">${org.billing_interval || '-'}</td>
-                        <td class="px-4 py-3 text-sm">${trialEnds}</td>
-                        <td class="px-4 py-3 text-sm">
-                            ${org.stripe_customer_id ? 
-                                `<a href="https://dashboard.stripe.com/test/customers/${org.stripe_customer_id}" target="_blank" class="text-purple-600 hover:underline">${org.stripe_customer_id.slice(0, 14)}...</a>` : 
-                                '-'}
-                        </td>
-                        <td class="px-4 py-3">
-                            <button onclick="manualActivate('${org.id}')" class="text-emerald-600 hover:text-emerald-800 text-sm font-semibold mr-2">
-                                Activate
-                            </button>
-                            <button onclick="manualCancel('${org.id}')" class="text-red-600 hover:text-red-800 text-sm font-semibold">
-                                Cancel
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-
-            document.getElementById('subs-table').innerHTML = html || '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No subscriptions found</td></tr>';
+        function updateOrgFilter() {
+            const select = document.getElementById('user-org-filter');
+            select.innerHTML = '<option value="">All Organizations</option>' + 
+                allOrgs.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
         }
 
         function filterOrgs() {
@@ -543,57 +653,39 @@
         }
 
         // ============================================
-        // TABS
-        // ============================================
-        function showTab(tab) {
-            // Hide all content
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            // Remove active state from all tabs
-            document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('border-purple-600', 'text-purple-700');
-                el.classList.add('border-transparent', 'text-slate-600');
-            });
-            
-            // Show selected content
-            document.getElementById('content-' + tab).classList.remove('hidden');
-            // Activate selected tab
-            const tabBtn = document.getElementById('tab-' + tab);
-            tabBtn.classList.add('border-purple-600', 'text-purple-700');
-            tabBtn.classList.remove('border-transparent', 'text-slate-600');
-        }
-
-        // ============================================
         // PASSWORD RESET
         // ============================================
         function openResetModal(userId) {
-            selectedUserId = userId;
-            const user = users.find(u => u.id === userId);
-            const org = organizations.find(o => o.id === user.org_id);
+            resetUserId = userId;
+            const user = allUsers.find(u => u.id === userId);
+            const org = allOrgs.find(o => o.id === user?.org_id);
             
             document.getElementById('reset-user-info').innerHTML = `
-                <div><strong>User:</strong> ${user.username}</div>
-                <div><strong>Role:</strong> ${user.role}</div>
-                <div><strong>Organization:</strong> ${org?.name || '-'}</div>
+                <div class="font-semibold">${user?.username || 'Unknown'}</div>
+                <div class="text-sm text-slate-600">${org?.name || 'No organization'}</div>
+                <div class="text-sm text-slate-600">Phone: ${user?.phone || 'N/A'}</div>
             `;
             document.getElementById('new-password').value = '';
             document.getElementById('reset-modal').classList.remove('hidden');
         }
 
         function closeResetModal() {
-            selectedUserId = null;
             document.getElementById('reset-modal').classList.add('hidden');
+            resetUserId = null;
         }
 
         function generatePassword() {
             const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
             let password = '';
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 8; i++) {
                 password += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             document.getElementById('new-password').value = password;
         }
 
         async function confirmResetPassword() {
+            if (!resetUserId) return;
+            
             const newPassword = document.getElementById('new-password').value;
             if (!newPassword || newPassword.length < 4) {
                 alert('Password must be at least 4 characters');
@@ -602,91 +694,102 @@
 
             const { error } = await db.from('users')
                 .update({ password: newPassword })
-                .eq('id', selectedUserId);
+                .eq('id', resetUserId);
 
             if (error) {
                 alert('Error resetting password: ' + error.message);
-            } else {
-                const user = users.find(u => u.id === selectedUserId);
-                alert(`Password reset successfully!\n\nUsername: ${user.username}\nNew Password: ${newPassword}`);
-                closeResetModal();
+                return;
             }
+
+            const user = allUsers.find(u => u.id === resetUserId);
+            alert(`Password reset successfully!\n\nUsername: ${user?.username}\nNew Password: ${newPassword}`);
+            closeResetModal();
         }
 
         // ============================================
         // ORG DETAILS
         // ============================================
-        async function viewOrg(orgId) {
-            const org = organizations.find(o => o.id === orgId);
-            const orgUsers = users.filter(u => u.org_id === orgId);
-            const owner = users.find(u => u.id === org.owner_id);
+        async function viewOrgDetails(orgId) {
+            const org = allOrgs.find(o => o.id === orgId);
+            const orgUsers = allUsers.filter(u => u.org_id === orgId);
+            
+            // Load teams and seasons
+            const [teamsRes, seasonsRes] = await Promise.all([
+                db.from('teams').select('*').eq('org_id', orgId),
+                db.from('seasons').select('*').eq('org_id', orgId)
+            ]);
 
-            // Load teams for this org
-            const { data: teams } = await db.from('teams').select('*').eq('org_id', orgId);
-            const { data: seasons } = await db.from('seasons').select('*').eq('org_id', orgId);
+            const teams = teamsRes.data || [];
+            const seasons = seasonsRes.data || [];
 
             document.getElementById('org-details-content').innerHTML = `
-                <div class="grid md:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-slate-50 p-4 rounded-lg">
-                        <h3 class="font-bold mb-3">📋 Organization Info</h3>
-                        <div class="space-y-2 text-sm">
-                            <div><strong>Name:</strong> ${org.name}</div>
-                            <div><strong>Slug:</strong> ${org.slug}</div>
-                            <div><strong>Owner:</strong> ${owner?.username || '-'}</div>
-                            <div><strong>Created:</strong> ${new Date(org.created_at).toLocaleString()}</div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="font-bold text-lg mb-3">📋 Organization Info</h3>
+                        <div class="bg-slate-50 rounded-lg p-4 space-y-2">
+                            <div><span class="text-slate-600">Name:</span> <strong>${org.name}</strong></div>
+                            <div><span class="text-slate-600">Slug:</span> ${org.slug || '-'}</div>
+                            <div><span class="text-slate-600">Status:</span> <span class="px-2 py-1 rounded text-xs ${org.subscription_status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${org.subscription_status}</span></div>
+                            <div><span class="text-slate-600">Tier:</span> ${org.subscription_tier || '-'}</div>
+                            <div><span class="text-slate-600">Billing:</span> ${org.billing_interval || '-'}</div>
+                            <div><span class="text-slate-600">Created:</span> ${formatDateTime(org.created_at)}</div>
+                            ${org.trial_ends_at ? `<div><span class="text-slate-600">Trial Ends:</span> ${formatDate(org.trial_ends_at)}</div>` : ''}
                         </div>
                     </div>
-                    <div class="bg-slate-50 p-4 rounded-lg">
-                        <h3 class="font-bold mb-3">💳 Subscription</h3>
-                        <div class="space-y-2 text-sm">
-                            <div><strong>Status:</strong> ${org.subscription_status}</div>
-                            <div><strong>Tier:</strong> ${org.subscription_tier || '-'}</div>
-                            <div><strong>Billing:</strong> ${org.billing_interval || '-'}</div>
-                            <div><strong>Trial Ends:</strong> ${org.trial_ends_at ? new Date(org.trial_ends_at).toLocaleDateString() : '-'}</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-3">📊 Statistics</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-blue-50 rounded-lg p-3 text-center">
+                                <div class="text-2xl font-black text-blue-600">${orgUsers.length}</div>
+                                <div class="text-sm text-blue-700">Users</div>
+                            </div>
+                            <div class="bg-green-50 rounded-lg p-3 text-center">
+                                <div class="text-2xl font-black text-green-600">${teams.length}</div>
+                                <div class="text-sm text-green-700">Teams</div>
+                            </div>
+                            <div class="bg-purple-50 rounded-lg p-3 text-center">
+                                <div class="text-2xl font-black text-purple-600">${seasons.length}</div>
+                                <div class="text-sm text-purple-700">Seasons</div>
+                            </div>
+                            <div class="bg-amber-50 rounded-lg p-3 text-center">
+                                <div class="text-2xl font-black text-amber-600">${orgUsers.reduce((sum, u) => sum + (u.login_count || 0), 0)}</div>
+                                <div class="text-sm text-amber-700">Total Logins</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="mb-6">
-                    <h3 class="font-bold mb-3">👥 Users (${orgUsers.length})</h3>
-                    <div class="bg-slate-50 rounded-lg overflow-hidden">
+                <div class="mt-6">
+                    <h3 class="font-bold text-lg mb-3">👥 Users (${orgUsers.length})</h3>
+                    <div class="overflow-x-auto">
                         <table class="w-full text-sm">
-                            <thead class="bg-slate-200">
+                            <thead class="bg-slate-100">
                                 <tr>
                                     <th class="px-3 py-2 text-left">Username</th>
-                                    <th class="px-3 py-2 text-left">Role</th>
-                                    <th class="px-3 py-2 text-left">Phone</th>
-                                    <th class="px-3 py-2 text-left">Actions</th>
+                                    <th class="px-3 py-2 text-center">Role</th>
+                                    <th class="px-3 py-2 text-center">Phone</th>
+                                    <th class="px-3 py-2 text-center">Last Login</th>
+                                    <th class="px-3 py-2 text-center">Logins</th>
+                                    <th class="px-3 py-2 text-center">Action</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-200">
+                            <tbody class="divide-y">
                                 ${orgUsers.map(u => `
-                                    <tr>
-                                        <td class="px-3 py-2">${u.username}</td>
-                                        <td class="px-3 py-2">${u.role}</td>
-                                        <td class="px-3 py-2">${u.phone || '-'}</td>
-                                        <td class="px-3 py-2">
-                                            <button onclick="closeOrgModal(); openResetModal('${u.id}')" class="text-purple-600 hover:underline">Reset Password</button>
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="px-3 py-2 font-medium">${u.username}</td>
+                                        <td class="px-3 py-2 text-center">
+                                            <span class="px-2 py-0.5 rounded text-xs ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100'}">${u.role}</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-center">${u.phone || '-'}</td>
+                                        <td class="px-3 py-2 text-center">${u.last_login ? formatDateTime(u.last_login) : '<span class="text-slate-400">Never</span>'}</td>
+                                        <td class="px-3 py-2 text-center font-semibold">${u.login_count || 0}</td>
+                                        <td class="px-3 py-2 text-center">
+                                            <button onclick="closeOrgModal(); openResetModal('${u.id}')" class="text-purple-600 hover:underline">Reset PW</button>
                                         </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <div class="grid md:grid-cols-2 gap-6">
-                    <div>
-                        <h3 class="font-bold mb-3">🏆 Teams (${teams?.length || 0})</h3>
-                        <div class="bg-slate-50 p-4 rounded-lg max-h-48 overflow-y-auto">
-                            ${teams?.length ? teams.map(t => `<div class="py-1">${t.name}</div>`).join('') : '<p class="text-slate-500">No teams</p>'}
-                        </div>
-                    </div>
-                    <div>
-                        <h3 class="font-bold mb-3">📅 Seasons (${seasons?.length || 0})</h3>
-                        <div class="bg-slate-50 p-4 rounded-lg max-h-48 overflow-y-auto">
-                            ${seasons?.length ? seasons.map(s => `<div class="py-1">${s.name} ${s.is_active ? '(Active)' : ''}</div>`).join('') : '<p class="text-slate-500">No seasons</p>'}
-                        </div>
                     </div>
                 </div>
             `;
@@ -699,88 +802,35 @@
         }
 
         // ============================================
-        // MANUAL SUBSCRIPTION MANAGEMENT
+        // UTILITIES
         // ============================================
-        async function manualActivate(orgId) {
-            const tier = prompt('Enter tier (starter or pro):', 'starter');
-            if (!tier || !['starter', 'pro'].includes(tier)) {
-                alert('Invalid tier');
-                return;
-            }
-
-            const { error } = await db.from('organizations')
-                .update({
-                    subscription_status: 'active',
-                    subscription_tier: tier,
-                    max_teams: tier === 'pro' ? 50 : 12,
-                    max_users: tier === 'pro' ? 500 : 100,
-                    max_seasons: tier === 'pro' ? 50 : 10
-                })
-                .eq('id', orgId);
-
-            if (error) {
-                alert('Error: ' + error.message);
-            } else {
-                alert('Subscription activated!');
-                loadOrganizations();
-            }
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleDateString();
         }
 
-        async function manualCancel(orgId) {
-            if (!confirm('Are you sure you want to cancel this subscription?')) return;
-
-            const { error } = await db.from('organizations')
-                .update({ subscription_status: 'canceled' })
-                .eq('id', orgId);
-
-            if (error) {
-                alert('Error: ' + error.message);
-            } else {
-                alert('Subscription canceled');
-                loadOrganizations();
-            }
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
-        // ============================================
-        // IMPERSONATE USER
-        // ============================================
-        function impersonateUser(userId) {
-            const user = users.find(u => u.id === userId);
-            const org = organizations.find(o => o.id === user.org_id);
-            
-            if (!confirm(`View app as "${user.username}" from "${org?.name}"?\n\nThis will open the app in a new tab with their session.`)) {
-                return;
-            }
-            
-            // Create a session for this user
-            const sessionData = JSON.stringify({ id: user.id });
-            
-            // Open app in new tab and set their session
-            const newTab = window.open('', '_blank');
-            newTab.document.write('<html><head><title>Loading...</title></head><body><scr' + 'ipt>localStorage.setItem("plm_session", \'' + sessionData + '\');window.location.href = "https://willismcg.github.io/pool-league-manager/app.html";</scr' + 'ipt></body></html>');
-        }
-
-        function viewAsOrgAdmin(orgId) {
-            // Find the admin user for this org
-            const org = organizations.find(o => o.id === orgId);
-            const adminUser = users.find(u => u.org_id === orgId && u.role === 'admin');
-            
-            if (!adminUser) {
-                alert('No admin user found for this organization');
-                return;
-            }
-            
-            impersonateUser(adminUser.id);
+        function formatTimeAgo(dateStr) {
+            if (!dateStr) return '';
+            const diff = Date.now() - new Date(dateStr);
+            const mins = Math.floor(diff / 60000);
+            if (mins < 1) return 'Just now';
+            if (mins < 60) return `${mins}m ago`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
         }
 
         // ============================================
         // INIT
         // ============================================
-        document.getElementById('admin-password').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
-        
-        checkAuth();
+        checkSession();
     </script>
 </body>
 </html>
