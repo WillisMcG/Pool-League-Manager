@@ -154,6 +154,8 @@
             showArchivedSeasons: false,
             showFullSchedule: false,
             selectedHistoryMatch: null,
+            standingsAdjustments: {}, // { teamId: { wins: +/- num, losses: +/- num, gamesWon: +/- num, gamesLost: +/- num } }
+            editingStandings: false,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -680,7 +682,8 @@
                     .order('created_at', { ascending: false });
                 state.seasons = (seasons || []).map(s => ({
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
-                    isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id
+                    isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id,
+                    standingsAdjustments: s.standings_adjustments || {}
                 }));
                 
                 // Set current season to active non-archived one, or most recent non-archived
@@ -722,6 +725,9 @@
 
         async function loadSeasonData() {
             const seasonId = state.currentSeason?.id;
+            
+            // Load standings adjustments from current season
+            state.standingsAdjustments = state.currentSeason?.standingsAdjustments || {};
             
             if (seasonId) {
                 const { data: schedule } = await db.from('schedule').select('*').eq('season_id', seasonId);
@@ -788,6 +794,56 @@
             } finally {
                 hideLoading();
             }
+        }
+
+        async function saveStandingsAdjustments() {
+            if (!state.currentSeason?.id) {
+                alert('No season selected');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const { error } = await db.from('seasons')
+                    .update({ standings_adjustments: state.standingsAdjustments })
+                    .eq('id', state.currentSeason.id);
+                
+                if (error) throw error;
+                
+                // Update local season data
+                state.currentSeason.standingsAdjustments = state.standingsAdjustments;
+                const seasonIdx = state.seasons.findIndex(s => s.id === state.currentSeason.id);
+                if (seasonIdx !== -1) {
+                    state.seasons[seasonIdx].standingsAdjustments = state.standingsAdjustments;
+                }
+                
+                alert('Standings adjustments saved!');
+                state.editingStandings = false;
+                render();
+            } catch (error) {
+                console.error('Error saving standings adjustments:', error);
+                alert('Error saving adjustments: ' + (error.message || 'Unknown error'));
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function updateStandingsAdjustment(teamId, field, value) {
+            const numValue = parseInt(value) || 0;
+            if (!state.standingsAdjustments[teamId]) {
+                state.standingsAdjustments[teamId] = { wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 };
+            }
+            state.standingsAdjustments[teamId][field] = numValue;
+            render();
+        }
+
+        function quickAdjust(teamId, winsDelta, lossesDelta) {
+            if (!state.standingsAdjustments[teamId]) {
+                state.standingsAdjustments[teamId] = { wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 };
+            }
+            state.standingsAdjustments[teamId].wins += winsDelta;
+            state.standingsAdjustments[teamId].losses += lossesDelta;
+            render();
         }
 
         async function addVenue(name, address, phone) {
@@ -2339,6 +2395,18 @@
                         }
                     }
                     // If 'none', don't add any points
+                }
+            });
+
+            // Apply manual adjustments from admin
+            standings.forEach(team => {
+                const adj = state.standingsAdjustments[team.id];
+                if (adj) {
+                    team.wins += (adj.wins || 0);
+                    team.losses += (adj.losses || 0);
+                    team.gamesWon += (adj.gamesWon || 0);
+                    team.gamesLost += (adj.gamesLost || 0);
+                    team.hasAdjustment = true;
                 }
             });
 
@@ -4286,11 +4354,38 @@
 
         function renderStandings() {
             const standings = calcStandings();
+            const isAdmin = state.currentUser?.role === 'admin';
+            const editing = state.editingStandings;
+            
             return `
                 <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
+                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6 flex justify-between items-center">
                         <h2 class="text-3xl font-black">🏆 Standings</h2>
+                        ${isAdmin ? `
+                            ${editing ? `
+                                <div class="flex gap-2">
+                                    <button onclick="saveStandingsAdjustments()" class="px-4 py-2 bg-white text-emerald-700 font-bold rounded-lg hover:bg-emerald-50">
+                                        💾 Save Changes
+                                    </button>
+                                    <button onclick="state.editingStandings = false; render();" class="px-4 py-2 bg-emerald-800 text-white font-bold rounded-lg hover:bg-emerald-900">
+                                        ✕ Cancel
+                                    </button>
+                                </div>
+                            ` : `
+                                <button onclick="state.editingStandings = true; render();" class="px-4 py-2 bg-white/20 text-white font-bold rounded-lg hover:bg-white/30">
+                                    ✏️ Edit Standings
+                                </button>
+                            `}
+                        ` : ''}
                     </div>
+                    
+                    ${editing ? `
+                        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                            <h3 class="font-bold text-amber-800 mb-2">📝 Editing Mode</h3>
+                            <p class="text-sm text-amber-700">Enter adjustments to add/subtract from calculated standings. Use negative numbers to subtract.</p>
+                        </div>
+                    ` : ''}
+                    
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                         <table class="w-full">
                             <thead class="bg-emerald-600 text-white">
@@ -4302,27 +4397,80 @@
                                     <th class="px-4 py-3 text-center">GW</th>
                                     <th class="px-4 py-3 text-center">GL</th>
                                     <th class="px-4 py-3 text-center">%</th>
+                                    ${editing ? '<th class="px-4 py-3 text-center">Adjustments</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody class="divide-y">
                                 ${standings.map((t, i) => {
                                     const total = t.wins + t.losses;
                                     const pct = total > 0 ? ((t.wins / total) * 100).toFixed(1) : '0.0';
+                                    const adj = state.standingsAdjustments[t.id] || { wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 };
+                                    const hasAdj = adj.wins || adj.losses || adj.gamesWon || adj.gamesLost;
+                                    
                                     return `
-                                        <tr class="hover:bg-emerald-50">
+                                        <tr class="hover:bg-emerald-50 ${hasAdj && !editing ? 'bg-amber-50' : ''}">
                                             <td class="px-4 py-3 font-black text-emerald-600">${i + 1}</td>
-                                            <td class="px-4 py-3 font-bold">${t.name}</td>
+                                            <td class="px-4 py-3 font-bold">
+                                                ${t.name}
+                                                ${hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adjusted</span>' : ''}
+                                            </td>
                                             <td class="px-4 py-3 text-center">${t.wins}</td>
                                             <td class="px-4 py-3 text-center">${t.losses}</td>
                                             <td class="px-4 py-3 text-center">${t.gamesWon}</td>
                                             <td class="px-4 py-3 text-center">${t.gamesLost}</td>
                                             <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
+                                            ${editing ? `
+                                                <td class="px-2 py-2">
+                                                    <div class="flex gap-1 items-center text-xs">
+                                                        <label class="text-gray-500">W:</label>
+                                                        <input type="number" 
+                                                            value="${adj.wins || 0}" 
+                                                            onchange="updateStandingsAdjustment('${t.id}', 'wins', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">L:</label>
+                                                        <input type="number" 
+                                                            value="${adj.losses || 0}" 
+                                                            onchange="updateStandingsAdjustment('${t.id}', 'losses', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">GW:</label>
+                                                        <input type="number" 
+                                                            value="${adj.gamesWon || 0}" 
+                                                            onchange="updateStandingsAdjustment('${t.id}', 'gamesWon', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">GL:</label>
+                                                        <input type="number" 
+                                                            value="${adj.gamesLost || 0}" 
+                                                            onchange="updateStandingsAdjustment('${t.id}', 'gamesLost', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                    </div>
+                                                </td>
+                                            ` : ''}
                                         </tr>
                                     `;
                                 }).join('')}
                             </tbody>
                         </table>
                     </div>
+                    
+                    ${editing ? `
+                        <div class="bg-white rounded-xl shadow-lg p-4">
+                            <h3 class="font-bold mb-3">Quick Adjustment Presets</h3>
+                            <p class="text-sm text-gray-600 mb-3">Click a team to apply a quick adjustment:</p>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                ${state.teams.map(team => `
+                                    <div class="border rounded-lg p-2">
+                                        <div class="font-semibold text-sm mb-2">${team.name}</div>
+                                        <div class="flex gap-1 flex-wrap">
+                                            <button onclick="quickAdjust('${team.id}', 1, 0)" class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200">+1 Win</button>
+                                            <button onclick="quickAdjust('${team.id}', -1, 0)" class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200">-1 Win</button>
+                                            <button onclick="quickAdjust('${team.id}', 0, 1)" class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200">+1 Loss</button>
+                                            <button onclick="quickAdjust('${team.id}', 0, -1)" class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200">-1 Loss</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -5493,6 +5641,11 @@
         window.clearAllData = clearAllData;
         window.addVenue = addVenue;
         window.deleteVenue = deleteVenue;
+        
+        // Standings adjustment functions
+        window.saveStandingsAdjustments = saveStandingsAdjustments;
+        window.updateStandingsAdjustment = updateStandingsAdjustment;
+        window.quickAdjust = quickAdjust;
         
         // Schedule creation functions
         window.addManualMatch = addManualMatch;
