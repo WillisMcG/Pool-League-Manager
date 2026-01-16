@@ -152,6 +152,7 @@
             showManageVenues: false,
             showManageSeasons: false,
             showArchivedSeasons: false,
+            showFullSchedule: false,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -2505,6 +2506,11 @@
 
         function renderSchedule() {
             const isAdmin = state.currentUser.role === 'admin';
+            const isCaptain = state.currentUser.role === 'captain';
+            const isPlayer = !isAdmin && !isCaptain;
+            const myTeamId = state.currentUser.teamId;
+            const myTeam = state.teams.find(t => t.id === myTeamId);
+            
             const completedMatches = state.matches.length;
             const totalMatches = state.schedule.filter(s => !s.isBye).length;
             
@@ -2513,14 +2519,29 @@
                 return renderScheduleCreation();
             }
             
+            // For players, filter schedule to only their team's matches (unless showing full)
+            let displaySchedule = state.schedule;
+            if (isPlayer && myTeamId && !state.showFullSchedule) {
+                displaySchedule = state.schedule.filter(match => {
+                    if (match.isPositionNight) {
+                        // For position nights, check if resolved teams include player's team
+                        const rh = getResolvedPositionTeam(match.homeTeamId, match.half);
+                        const ra = getResolvedPositionTeam(match.awayTeamId, match.half);
+                        return rh?.id === myTeamId || ra?.id === myTeamId;
+                    }
+                    return match.homeTeamId === myTeamId || match.awayTeamId === myTeamId;
+                });
+            }
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
-                        <h2 class="text-3xl font-black">📅 League Schedule</h2>
-                        <p class="mt-1 opacity-90">Manage seasons and view match schedules</p>
+                        <h2 class="text-3xl font-black">📅 ${isPlayer && myTeam ? myTeam.name + ' Schedule' : 'League Schedule'}</h2>
+                        <p class="mt-1 opacity-90">${isPlayer ? 'View your team\'s upcoming matches' : 'Manage seasons and view match schedules'}</p>
                     </div>
 
-                    <!-- Season Management Section -->
+                    ${!isPlayer ? `
+                    <!-- Season Management Section (Admin/Captain Only) -->
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="text-xl font-bold flex items-center gap-2">
@@ -2614,9 +2635,26 @@
                         </div>
                         ` : ''}
                     </div>
+                    ` : `
+                    <!-- Player View: Team Info Card -->
+                    ${myTeam ? `
+                    <div class="bg-white rounded-xl shadow-lg p-4">
+                        <div class="flex items-center gap-4">
+                            <div class="text-3xl">🎱</div>
+                            <div class="flex-1">
+                                <div class="font-bold text-lg">${myTeam.name}</div>
+                                <div class="text-sm text-slate-600">
+                                    ${state.currentSeason?.name || 'Current Season'} 
+                                    • ${displaySchedule.filter(s => !s.isBye).length} matches
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                    `}
 
                     <!-- Schedule Table -->
-                    ${state.schedule.length === 0 ? `
+                    ${displaySchedule.length === 0 ? `
                         <div class="bg-white rounded-xl shadow-lg p-12 text-center">
                             <div class="text-6xl mb-4">📅</div>
                             <h3 class="text-2xl font-bold text-slate-800 mb-2">No Schedule Yet</h3>
@@ -2631,11 +2669,11 @@
                     ` : `
                         <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                             <div class="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
-                                <h3 class="font-bold">${state.currentSeason?.name || 'Schedule'}</h3>
+                                <h3 class="font-bold">${isPlayer && !state.showFullSchedule ? (myTeam?.name || 'Your') + ' Matches' : (state.currentSeason?.name || 'Schedule')}</h3>
                                 <div class="flex items-center gap-4">
                                     <div class="text-sm text-slate-600">
-                                        ${state.schedule.filter(s => !s.isBye && !s.isPositionNight).length} matches 
-                                        • ${[...new Set(state.schedule.map(s => s.week))].length} weeks
+                                        ${displaySchedule.filter(s => !s.isBye && !s.isPositionNight).length} matches 
+                                        • ${[...new Set(displaySchedule.map(s => s.week))].length} weeks
                                     </div>
                                     ${isAdmin ? `
                                     <button onclick="window.state.scheduleMode = 'choose'; window.render();" 
@@ -2659,7 +2697,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y">
-                                        ${state.schedule.map(match => {
+                                        ${displaySchedule.map(match => {
                                             let matchupDisplay, venueDisplay;
 
                                             if (match.isPositionNight) {
@@ -2682,7 +2720,10 @@
                                                     matchupDisplay = `<span class="text-blue-600">🏖️ ${home?.name || '?'} - BYE</span>`;
                                                     venueDisplay = '-';
                                                 } else {
-                                                    matchupDisplay = `${away?.name || '?'} @ ${home?.name || '?'}`;
+                                                    // Highlight player's team
+                                                    const homeHighlight = isPlayer && home?.id === myTeamId ? 'font-bold text-emerald-700' : '';
+                                                    const awayHighlight = isPlayer && away?.id === myTeamId ? 'font-bold text-emerald-700' : '';
+                                                    matchupDisplay = `<span class="${awayHighlight}">${away?.name || '?'}</span> @ <span class="${homeHighlight}">${home?.name || '?'}</span>`;
                                                     venueDisplay = match.venue || 'TBD';
                                                 }
                                             }
@@ -2717,6 +2758,16 @@
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            ${isPlayer ? `
+                            <!-- View Full Schedule Link for Players -->
+                            <div class="px-4 py-3 bg-slate-50 border-t text-center">
+                                <button onclick="window.state.showFullSchedule = !window.state.showFullSchedule; window.render();" 
+                                    class="text-emerald-600 hover:text-emerald-800 font-semibold text-sm">
+                                    ${state.showFullSchedule ? '👤 Show Only My Matches' : '📅 View Full Season Schedule'}
+                                </button>
+                            </div>
+                            ` : ''}
                         </div>
                     `}
                 </div>
