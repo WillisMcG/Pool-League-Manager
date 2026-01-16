@@ -169,6 +169,10 @@
             },
             // Manual match form data
             manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
+            // Manual entry mode: 'single' or 'week'
+            manualEntryMode: 'single',
+            // Week entry data - array of matches for batch entry
+            weekMatches: [],
             selectedMatch: '',
             selectedTeam: '',
             matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
@@ -274,6 +278,206 @@
             state.manualMatch.week = nextWeek;
             state.manualMatch.date = nextDate;
             render();
+        }
+        
+        // ============================================
+        // WEEK ENTRY HELPER FUNCTIONS
+        // ============================================
+        
+        function initWeekMatches() {
+            const numTeams = state.teams.length;
+            const numMatches = Math.floor(numTeams / 2);
+            const hasBye = numTeams % 2 === 1;
+            
+            // Create empty match slots
+            state.weekMatches = [];
+            for (let i = 0; i < numMatches; i++) {
+                state.weekMatches.push({
+                    homeTeamId: '',
+                    awayTeamId: '',
+                    venue: ''
+                });
+            }
+            
+            // Add bye slot if odd number of teams
+            if (hasBye) {
+                state.weekMatches.push({
+                    homeTeamId: '',
+                    awayTeamId: 'BYE',
+                    venue: 'BYE WEEK',
+                    isBye: true
+                });
+            }
+        }
+        
+        function updateWeekMatch(index, field, value) {
+            if (!state.weekMatches[index]) return;
+            state.weekMatches[index][field] = value;
+            
+            // Auto-fill venue when home team is selected
+            if (field === 'homeTeamId' && value) {
+                const team = state.teams.find(t => t.id === value);
+                if (team && team.venue && !state.weekMatches[index].isBye) {
+                    state.weekMatches[index].venue = team.venue;
+                }
+            }
+            
+            render();
+        }
+        
+        function getUsedTeamsInWeek() {
+            const used = new Set();
+            state.weekMatches.forEach(m => {
+                if (m.homeTeamId) used.add(m.homeTeamId);
+                if (m.awayTeamId && m.awayTeamId !== 'BYE') used.add(m.awayTeamId);
+            });
+            return used;
+        }
+        
+        function getAvailableTeamsForSlot(currentMatch, field) {
+            const usedTeams = getUsedTeamsInWeek();
+            const currentValue = currentMatch[field];
+            const otherField = field === 'homeTeamId' ? 'awayTeamId' : 'homeTeamId';
+            const otherValue = currentMatch[otherField];
+            
+            return state.teams.filter(t => {
+                // Always show currently selected team
+                if (t.id === currentValue) return true;
+                // Don't show if already used elsewhere
+                if (usedTeams.has(t.id)) return false;
+                // Don't show if it's the other team in this match
+                if (t.id === otherValue) return false;
+                return true;
+            });
+        }
+        
+        function validateWeekMatches() {
+            const m = state.manualMatch;
+            if (!m.week || !m.date) {
+                alert('Please enter week number and date');
+                return false;
+            }
+            
+            // Check that all slots are filled
+            for (let i = 0; i < state.weekMatches.length; i++) {
+                const match = state.weekMatches[i];
+                if (!match.homeTeamId) {
+                    alert(`Match ${i + 1}: Please select a home team`);
+                    return false;
+                }
+                if (!match.awayTeamId && !match.isBye) {
+                    alert(`Match ${i + 1}: Please select an away team`);
+                    return false;
+                }
+            }
+            
+            // Check for duplicate teams
+            const usedTeams = new Set();
+            for (const match of state.weekMatches) {
+                if (usedTeams.has(match.homeTeamId)) {
+                    const team = state.teams.find(t => t.id === match.homeTeamId);
+                    alert(`${team?.name || 'A team'} is scheduled twice in this week!`);
+                    return false;
+                }
+                usedTeams.add(match.homeTeamId);
+                
+                if (match.awayTeamId && match.awayTeamId !== 'BYE') {
+                    if (usedTeams.has(match.awayTeamId)) {
+                        const team = state.teams.find(t => t.id === match.awayTeamId);
+                        alert(`${team?.name || 'A team'} is scheduled twice in this week!`);
+                        return false;
+                    }
+                    usedTeams.add(match.awayTeamId);
+                }
+            }
+            
+            return true;
+        }
+        
+        async function addWeekMatches() {
+            if (!validateWeekMatches()) return;
+            
+            if (!state.currentSeason?.id) {
+                alert('Please create or select a season first');
+                return;
+            }
+            
+            if (!state.organization?.id) {
+                alert('No organization loaded');
+                return;
+            }
+            
+            const m = state.manualMatch;
+            
+            showLoading();
+            try {
+                const scheduleEntries = state.weekMatches.map(match => {
+                    const homeTeam = state.teams.find(t => t.id === match.homeTeamId);
+                    const isBye = match.isBye || match.awayTeamId === 'BYE';
+                    
+                    return {
+                        week: m.week,
+                        date: m.date,
+                        home_team_id: match.homeTeamId,
+                        away_team_id: isBye ? 'BYE' : match.awayTeamId,
+                        venue: isBye ? 'BYE WEEK' : (match.venue || homeTeam?.venue || 'TBD'),
+                        is_bye: isBye,
+                        half: parseInt(m.half) || 1,
+                        is_position_night: false,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    };
+                });
+                
+                const { data, error } = await db.from('schedule').insert(scheduleEntries).select();
+                
+                if (error) throw error;
+                
+                // Add to local state
+                data.forEach(entry => {
+                    state.schedule.push({
+                        id: entry.id,
+                        week: entry.week,
+                        date: entry.date,
+                        homeTeamId: entry.home_team_id,
+                        awayTeamId: entry.away_team_id,
+                        venue: entry.venue,
+                        isBye: entry.is_bye,
+                        half: entry.half,
+                        isPositionNight: entry.is_position_night,
+                        seasonId: entry.season_id,
+                        orgId: entry.org_id
+                    });
+                });
+                
+                // Sort schedule by week
+                state.schedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
+                
+                // Advance to next week and reset matches
+                const currentHalf = m.half;
+                const nextWeek = (parseInt(m.week) + 1).toString();
+                const nextDate = getNextPlayDate(m.date);
+                
+                state.manualMatch = { 
+                    week: nextWeek, 
+                    date: nextDate, 
+                    homeTeamId: '', 
+                    awayTeamId: '', 
+                    venue: '', 
+                    half: currentHalf 
+                };
+                
+                // Re-init week matches for next week
+                initWeekMatches();
+                
+                alert(`Added ${data.length} matches for Week ${m.week}!`);
+                render();
+            } catch (error) {
+                console.error('Error adding week matches:', error);
+                alert('Error adding matches: ' + error.message);
+            } finally {
+                hideLoading();
+            }
         }
 
         // ============================================
@@ -2373,6 +2577,7 @@
         // Manual schedule entry form
         function renderManualScheduleEntry() {
             const m = state.manualMatch;
+            const mode = state.manualEntryMode;
             const allVenues = [...new Set([
                 ...state.venues,
                 ...state.teams.map(t => t.venue).filter(v => v && v.trim())
@@ -2381,7 +2586,7 @@
             return `
                 <div class="bg-white rounded-xl shadow-lg p-6">
                     <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-xl font-bold">✏️ Add Match Manually</h3>
+                        <h3 class="text-xl font-bold">✏️ Manual Schedule Entry</h3>
                         <button onclick="window.state.scheduleMode = 'choose'; window.render();" 
                             class="text-sm text-slate-600 hover:text-slate-800">← Back to options</button>
                     </div>
@@ -2390,6 +2595,22 @@
                         <p class="text-emerald-800 text-sm">
                             <strong>Adding to:</strong> ${state.currentSeason?.name || 'No season selected'}
                         </p>
+                    </div>
+                    
+                    <!-- Mode Toggle -->
+                    <div class="flex gap-2 mb-6">
+                        <button onclick="window.state.manualEntryMode = 'single'; window.render();" 
+                            class="flex-1 py-3 rounded-lg font-bold transition-all ${mode === 'single' 
+                                ? 'bg-emerald-600 text-white' 
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                            ➕ Single Match
+                        </button>
+                        <button onclick="window.state.manualEntryMode = 'week'; window.initWeekMatches(); window.render();" 
+                            class="flex-1 py-3 rounded-lg font-bold transition-all ${mode === 'week' 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                            📅 Full Week
+                        </button>
                     </div>
                     
                     <!-- Play Days Setting -->
@@ -2407,17 +2628,18 @@
                                 </button>
                             `).join('')}
                         </div>
-                        <p class="text-xs text-slate-500 mt-2">Selected days are used for auto-calculating dates. Date auto-advances to next play day.</p>
+                        <p class="text-xs text-slate-500 mt-2">Selected days are used for auto-calculating dates.</p>
                     </div>
                     
-                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <!-- Common Week/Date/Half fields -->
+                    <div class="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-slate-50 rounded-lg border">
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 mb-1">Week Number *</label>
                             <div class="flex gap-2">
                                 <input type="text" id="manual-week" value="${m.week}" 
                                     onchange="window.state.manualMatch.week = this.value;"
                                     placeholder="e.g., 1" 
-                                    class="flex-1 px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                    class="flex-1 px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500 bg-white">
                                 <button onclick="window.advanceToNextWeek()" 
                                     class="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 text-sm font-bold"
                                     title="Advance to next week">+1</button>
@@ -2428,63 +2650,21 @@
                             <label class="block text-sm font-semibold text-slate-700 mb-1">Date *</label>
                             <input type="date" id="manual-date" value="${m.date}"
                                 onchange="window.state.manualMatch.date = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500 bg-white">
                         </div>
                         
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 mb-1">Half</label>
                             <select id="manual-half" 
                                 onchange="window.state.manualMatch.half = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500 bg-white">
                                 <option value="1" ${m.half === '1' ? 'selected' : ''}>1st Half</option>
                                 <option value="2" ${m.half === '2' ? 'selected' : ''}>2nd Half</option>
                             </select>
                         </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Home Team *</label>
-                            <select id="manual-home" 
-                                onchange="window.state.manualMatch.homeTeamId = this.value; updateManualVenue();"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="">Select home team...</option>
-                                ${state.teams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Away Team</label>
-                            <select id="manual-away" 
-                                onchange="window.state.manualMatch.awayTeamId = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="">Select away team...</option>
-                                <option value="BYE" ${m.awayTeamId === 'BYE' ? 'selected' : ''}>🏖️ BYE WEEK</option>
-                                ${state.teams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-1">Venue</label>
-                            <select id="manual-venue" 
-                                onchange="window.state.manualMatch.venue = this.value;"
-                                class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
-                                <option value="">Select venue...</option>
-                                ${allVenues.map(v => `<option value="${v}" ${m.venue === v ? 'selected' : ''}>${v}</option>`).join('')}
-                                <option value="TBD" ${m.venue === 'TBD' ? 'selected' : ''}>TBD</option>
-                            </select>
-                            <p class="text-xs text-slate-500 mt-1">Auto-fills from home team</p>
-                        </div>
                     </div>
                     
-                    <div class="flex gap-4">
-                        <button onclick="addManualMatch()" 
-                            class="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
-                            ➕ Add Match
-                        </button>
-                        <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
-                            class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
-                            Done
-                        </button>
-                    </div>
+                    ${mode === 'single' ? renderSingleMatchEntry(m, allVenues) : renderWeekEntry(allVenues)}
                 </div>
                 
                 <!-- Recently Added Preview -->
@@ -2523,6 +2703,166 @@
                     </div>
                 </div>
                 ` : ''}
+            `;
+        }
+        
+        // Single match entry form
+        function renderSingleMatchEntry(m, allVenues) {
+            return `
+                <div class="grid md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Away Team</label>
+                        <select id="manual-away" 
+                            onchange="window.state.manualMatch.awayTeamId = this.value;"
+                            class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            <option value="">Select away team...</option>
+                            <option value="BYE" ${m.awayTeamId === 'BYE' ? 'selected' : ''}>🏖️ BYE WEEK</option>
+                            ${state.teams.filter(t => t.id !== m.homeTeamId).map(t => `<option value="${t.id}" ${m.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Home Team *</label>
+                        <select id="manual-home" 
+                            onchange="window.state.manualMatch.homeTeamId = this.value; updateManualVenue();"
+                            class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            <option value="">Select home team...</option>
+                            ${state.teams.map(t => `<option value="${t.id}" ${m.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Venue</label>
+                        <select id="manual-venue" 
+                            onchange="window.state.manualMatch.venue = this.value;"
+                            class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-emerald-500">
+                            <option value="">Select venue...</option>
+                            ${allVenues.map(v => `<option value="${v}" ${m.venue === v ? 'selected' : ''}>${v}</option>`).join('')}
+                            <option value="TBD" ${m.venue === 'TBD' ? 'selected' : ''}>TBD</option>
+                        </select>
+                        <p class="text-xs text-slate-500 mt-1">Auto-fills from home team</p>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button onclick="addManualMatch()" 
+                        class="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
+                        ➕ Add Match
+                    </button>
+                    <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
+                        class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
+                        Done
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Week entry form
+        function renderWeekEntry(allVenues) {
+            const numTeams = state.teams.length;
+            
+            if (numTeams < 2) {
+                return `
+                    <div class="text-center py-8 text-slate-500">
+                        <p>You need at least 2 teams to create a week schedule.</p>
+                    </div>
+                `;
+            }
+            
+            // Initialize weekMatches if empty
+            if (state.weekMatches.length === 0) {
+                initWeekMatches();
+            }
+            
+            const usedTeams = getUsedTeamsInWeek();
+            
+            return `
+                <div class="space-y-4 mb-6">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-700">Week ${state.manualMatch.week || '?'} Matches (${state.teams.length} teams)</h4>
+                        <button onclick="window.initWeekMatches(); window.render();" 
+                            class="text-sm text-blue-600 hover:text-blue-800">🔄 Reset All</button>
+                    </div>
+                    
+                    ${state.weekMatches.map((match, idx) => {
+                        const availableHome = getAvailableTeamsForSlot(match, 'homeTeamId');
+                        const availableAway = getAvailableTeamsForSlot(match, 'awayTeamId');
+                        const homeTeam = state.teams.find(t => t.id === match.homeTeamId);
+                        
+                        if (match.isBye) {
+                            // BYE slot
+                            return `
+                                <div class="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-lg font-bold text-blue-600">🏖️</span>
+                                        <div class="flex-1">
+                                            <label class="block text-xs font-bold uppercase text-blue-600 mb-1">BYE Week</label>
+                                            <select onchange="window.updateWeekMatch(${idx}, 'homeTeamId', this.value)"
+                                                class="w-full px-3 py-2 border-2 border-blue-300 rounded-lg bg-white">
+                                                <option value="">Select team for bye...</option>
+                                                ${availableHome.map(t => `<option value="${t.id}" ${match.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        // Regular match slot
+                        return `
+                            <div class="p-4 bg-slate-50 border-2 border-slate-200 rounded-lg">
+                                <div class="grid md:grid-cols-7 gap-3 items-end">
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Away Team</label>
+                                        <select onchange="window.updateWeekMatch(${idx}, 'awayTeamId', this.value)"
+                                            class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg">
+                                            <option value="">Select...</option>
+                                            ${availableAway.map(t => `<option value="${t.id}" ${match.awayTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="text-center font-bold text-slate-400 py-2">@</div>
+                                    
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Home Team</label>
+                                        <select onchange="window.updateWeekMatch(${idx}, 'homeTeamId', this.value)"
+                                            class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg">
+                                            <option value="">Select...</option>
+                                            ${availableHome.map(t => `<option value="${t.id}" ${match.homeTeamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Venue</label>
+                                        <select onchange="window.updateWeekMatch(${idx}, 'venue', this.value)"
+                                            class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg">
+                                            <option value="">Select...</option>
+                                            ${allVenues.map(v => `<option value="${v}" ${match.venue === v ? 'selected' : ''}>${v}</option>`).join('')}
+                                            <option value="TBD" ${match.venue === 'TBD' ? 'selected' : ''}>TBD</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    <!-- Summary -->
+                    <div class="p-3 bg-slate-100 rounded-lg text-sm text-slate-600">
+                        <strong>Teams assigned:</strong> ${usedTeams.size} / ${numTeams}
+                        ${usedTeams.size < numTeams ? `<span class="text-amber-600 ml-2">⚠️ ${numTeams - usedTeams.size} team(s) not assigned</span>` : '<span class="text-emerald-600 ml-2">✓ All teams assigned</span>'}
+                    </div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button onclick="window.addWeekMatches()" 
+                        class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">
+                        📅 Add Week ${state.manualMatch.week || ''} (${state.weekMatches.length} matches)
+                    </button>
+                    <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
+                        class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
+                        Done
+                    </button>
+                </div>
             `;
         }
         
@@ -4561,6 +4901,13 @@
         window.toggleManualPlayDay = toggleManualPlayDay;
         window.advanceToNextWeek = advanceToNextWeek;
         window.initManualEntryDefaults = initManualEntryDefaults;
+        
+        // Week entry functions
+        window.initWeekMatches = initWeekMatches;
+        window.updateWeekMatch = updateWeekMatch;
+        window.addWeekMatches = addWeekMatches;
+        window.getAvailableTeamsForSlot = getAvailableTeamsForSlot;
+        window.getUsedTeamsInWeek = getUsedTeamsInWeek;
         
         window.quickCreateSeason = async function() {
             const nameInput = document.getElementById('quick-season-name');
