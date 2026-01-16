@@ -746,7 +746,7 @@
                     id: m.id, scheduleId: m.schedule_id, homeScore: m.home_score,
                     awayScore: m.away_score, matchups: m.matchups || [],
                     approved: m.approved, timestamp: m.created_at,
-                    seasonId: m.season_id
+                    seasonId: m.season_id, markedPlayed: m.marked_played
                 }));
             } else {
                 // No season - load all data (backwards compatibility)
@@ -769,7 +769,8 @@
                 state.matches = (matches || []).map(m => ({
                     id: m.id, scheduleId: m.schedule_id, homeScore: m.home_score,
                     awayScore: m.away_score, matchups: m.matchups || [],
-                    approved: m.approved, timestamp: m.created_at
+                    approved: m.approved, timestamp: m.created_at,
+                    markedPlayed: m.marked_played
                 }));
             }
         }
@@ -1715,6 +1716,69 @@
                 render();
             } catch (error) {
                 console.error('Error:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function markAsPlayed(scheduleId) {
+            if (!confirm('Mark this match as played? (No scores will be recorded)')) return;
+            
+            const isAdmin = state.currentUser?.role === 'admin';
+            if (!isAdmin) {
+                alert('Only admins can mark matches as played');
+                return;
+            }
+            
+            const seasonId = state.currentSeason?.id;
+            const orgId = state.organization?.id;
+            
+            if (!seasonId || !orgId) {
+                alert('No season or organization selected');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const insertData = {
+                    schedule_id: scheduleId,
+                    home_score: 0,
+                    away_score: 0,
+                    matchups: [],
+                    approved: true,
+                    marked_played: true,
+                    season_id: seasonId,
+                    org_id: orgId
+                };
+                
+                const { data: matchData, error } = await db.from('matches').insert([insertData]).select().single();
+                
+                if (error) {
+                    console.error('Supabase error:', error);
+                    throw error;
+                }
+                
+                state.matches = [...state.matches, {
+                    id: matchData.id,
+                    scheduleId: matchData.schedule_id,
+                    homeScore: matchData.home_score,
+                    awayScore: matchData.away_score,
+                    matchups: matchData.matchups || [],
+                    approved: true,
+                    markedPlayed: matchData.marked_played,
+                    seasonId: matchData.season_id,
+                    orgId: matchData.org_id
+                }];
+                
+                // Clear any pending submissions for this match
+                await db.from('submissions').delete().eq('schedule_id', scheduleId);
+                state.submissions = state.submissions.filter(s => s.scheduleId !== scheduleId);
+                
+                render();
+                alert('Match marked as played!');
+            } catch (error) {
+                console.error('Error marking as played:', error);
+                alert('Error marking match as played: ' + (error.message || JSON.stringify(error)));
             } finally {
                 hideLoading();
             }
@@ -2797,6 +2861,7 @@
 
                                             let status = '<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Pending</span>';
                                             if (match.isBye) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">BYE</span>';
+                                            else if (result && result.markedPlayed) status = '<span class="px-2 py-1 bg-slate-200 text-slate-700 rounded-full text-xs font-bold">✓ Played</span>';
                                             else if (result) status = `<span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">${result.awayScore}-${result.homeScore}</span>`;
                                             else if (subs.length === 2) status = '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">⚠️ Conflict</span>';
                                             else if (subs.length === 1) status = '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">1/2</span>';
@@ -2806,6 +2871,9 @@
                                                 : `<span class="px-2 py-1 ${match.half === 1 ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'} rounded text-xs">${match.half === 1 ? '1st' : '2nd'}</span>`;
 
                                             const rowClass = match.isPositionNight ? 'bg-purple-50' : (match.isBye ? 'bg-blue-50' : '');
+                                            
+                                            // Show Mark as Played button for admin on pending non-bye matches
+                                            const showMarkPlayed = isAdmin && !match.isBye && !result;
 
                                             return `
                                                 <tr class="${rowClass} hover:bg-slate-50">
@@ -2815,7 +2883,12 @@
                                                     <td class="px-4 py-3">${matchupDisplay}</td>
                                                     <td class="px-4 py-3 text-slate-600">${venueDisplay}</td>
                                                     <td class="px-4 py-3">${status}</td>
-                                                    ${isAdmin ? `<td class="px-4 py-3"><button onclick="deleteScheduleMatch('${match.id}')" class="text-red-600 hover:text-red-800 text-sm">🗑️</button></td>` : ''}
+                                                    ${isAdmin ? `
+                                                    <td class="px-4 py-3 whitespace-nowrap">
+                                                        ${showMarkPlayed ? `<button onclick="markAsPlayed('${match.id}')" class="text-slate-600 hover:text-slate-800 text-xs mr-2" title="Mark as played without scores">✓ Played</button>` : ''}
+                                                        <button onclick="deleteScheduleMatch('${match.id}')" class="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                                                    </td>
+                                                    ` : ''}
                                                 </tr>
                                             `;
                                         }).join('')}
@@ -4299,6 +4372,7 @@
                         const away = state.teams.find(t => t.id === sched.awayTeamId);
                         const isExpanded = state.selectedHistoryMatch === sched.id;
                         const matchups = match.matchups || [];
+                        const isMarkedPlayed = match.markedPlayed;
                         
                         return `
                             <div class="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -4309,7 +4383,11 @@
                                             <p class="text-slate-600">Week ${sched.week} • ${sched.date}</p>
                                         </div>
                                         <div class="flex items-center gap-4">
-                                            <div class="text-3xl font-black text-emerald-700">${match.awayScore} - ${match.homeScore}</div>
+                                            ${isMarkedPlayed ? `
+                                                <div class="text-lg font-bold text-slate-500">✓ Played</div>
+                                            ` : `
+                                                <div class="text-3xl font-black text-emerald-700">${match.awayScore} - ${match.homeScore}</div>
+                                            `}
                                             <span class="text-slate-400 text-xl">${isExpanded ? '▲' : '▼'}</span>
                                         </div>
                                     </div>
@@ -4318,7 +4396,13 @@
                                 ${isExpanded ? `
                                 <div class="border-t bg-slate-50 p-6">
                                     <h4 class="font-bold text-slate-700 mb-4">Match Details</h4>
-                                    ${matchups.length === 0 ? `
+                                    ${isMarkedPlayed ? `
+                                        <div class="text-center py-6">
+                                            <div class="text-4xl mb-2">✓</div>
+                                            <p class="text-slate-600 font-semibold">Match was marked as played</p>
+                                            <p class="text-slate-500 text-sm">No detailed scores were recorded</p>
+                                        </div>
+                                    ` : matchups.length === 0 ? `
                                         <p class="text-slate-500 text-center py-4">No detailed matchup data available</p>
                                     ` : `
                                         <div class="space-y-3">
@@ -5378,6 +5462,7 @@
         window.submitScores = submitScores;
         window.generateSchedule = generateSchedule;
         window.deleteScheduleMatch = deleteScheduleMatch;
+        window.markAsPlayed = markAsPlayed;
         window.deleteTeam = deleteTeam;
         window.deleteUser = deleteUser;
         window.assignTeam = assignTeam;
