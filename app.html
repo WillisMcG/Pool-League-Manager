@@ -2042,6 +2042,7 @@
             // Admin only needs match selected, captains need both match and team
             if (!sel) { alert('Select a match'); return; }
             if (!isAdmin && !team) { alert('Select your team'); return; }
+            if (!seasonId) { alert('No season selected'); return; }
 
             for (let i = 0; i < matchups.length; i++) {
                 const m = matchups[i];
@@ -2063,18 +2064,24 @@
             try {
                 // ADMIN PATH: Post scores directly without dual-submission
                 if (isAdmin) {
-                    const { data: matchData, error } = await db.from('matches').insert([{
+                    const insertData = {
                         schedule_id: sel, 
                         home_score: homeScore, 
                         away_score: awayScore,
                         matchups: matchups.map(m => ({ ...m })), 
                         approved: true,
-                        approved_by: state.currentUser?.id,
                         season_id: seasonId,
                         org_id: orgId
-                    }]).select().single();
+                    };
+                    
+                    console.log('Inserting match data:', insertData);
+                    
+                    const { data: matchData, error } = await db.from('matches').insert([insertData]).select().single();
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('Supabase error:', error);
+                        throw error;
+                    }
 
                     state.matches = [...state.matches, {
                         id: matchData.id, 
@@ -2083,7 +2090,6 @@
                         awayScore: matchData.away_score,
                         matchups: matchData.matchups, 
                         approved: true,
-                        approvedBy: matchData.approved_by,
                         seasonId: matchData.season_id, 
                         orgId: matchData.org_id
                     }];
@@ -2151,8 +2157,8 @@
                 state.matchups = Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' }));
                 render();
             } catch (error) {
-                console.error('Error:', error);
-                alert('Error submitting scores');
+                console.error('Error submitting scores:', error);
+                alert('Error submitting scores: ' + (error.message || JSON.stringify(error)));
             } finally {
                 hideLoading();
             }
@@ -4012,29 +4018,53 @@
                                 <h3 class="font-bold ${isAdmin ? 'text-amber-800' : 'text-emerald-800'}">${away.name} @ ${home.name}</h3>
                             </div>
 
-                            ${state.matchups.map((m, i) => `
-                                <div class="border rounded-lg p-4 mb-4 bg-slate-50">
-                                    <h4 class="font-bold mb-3">Game ${i + 1}</h4>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
-                                            <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select...</option>
-                                                ${[...home.players].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                                            </select>
-                                            <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
+                            ${(() => {
+                                return state.matchups.map((m, i) => {
+                                    // For this game, get players selected in OTHER games (exclude current game's selection)
+                                    const otherHomeSelections = state.matchups
+                                        .filter((_, idx) => idx !== i)
+                                        .map(mu => mu.homePlayer)
+                                        .filter(p => p);
+                                    const otherAwaySelections = state.matchups
+                                        .filter((_, idx) => idx !== i)
+                                        .map(mu => mu.awayPlayer)
+                                        .filter(p => p);
+                                    
+                                    // Available home players: not selected in other games
+                                    const availableHomePlayers = [...(home.players || [])]
+                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                        .filter(p => !otherHomeSelections.includes(p.id));
+                                    
+                                    // Available away players: not selected in other games
+                                    const availableAwayPlayers = [...(away.players || [])]
+                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                        .filter(p => !otherAwaySelections.includes(p.id));
+                                    
+                                    return `
+                                        <div class="border rounded-lg p-4 mb-4 bg-slate-50">
+                                            <h4 class="font-bold mb-3">Game ${i + 1}</h4>
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
+                                                    <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
+                                                        <option value="">Select...</option>
+                                                        ${availableHomePlayers.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                                    </select>
+                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
+                                                    <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
+                                                        <option value="">Select...</option>
+                                                        ${availableAwayPlayers.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                                    </select>
+                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
-                                            <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select...</option>
-                                                ${[...away.players].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                                            </select>
-                                            <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
-                                        </div>
-                                    </div>
-                                </div>
-                            `).join('')}
+                                    `;
+                                }).join('');
+                            })()}
 
                             <button onclick="submitScores()" class="w-full ${isAdmin ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold py-4 rounded-lg">
                                 ${isAdmin ? '🛡️ Post Scores (Final)' : 'Submit Scores'}
