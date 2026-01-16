@@ -2250,6 +2250,9 @@
             const standings = state.teams.map(t => ({ id: t.id, name: t.name, venue: t.venue, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 }));
 
             state.matches.forEach(match => {
+                // Skip marked-as-played matches (no actual scores)
+                if (match.markedPlayed) return;
+                
                 const sched = state.schedule.find(s => s.id === match.scheduleId);
                 if (!sched || sched.half > upToHalf || sched.isPositionNight) return;
 
@@ -2261,7 +2264,8 @@
                     standings[aIdx].gamesWon += match.awayScore;
                     standings[aIdx].gamesLost += match.homeScore;
                     if (match.homeScore > match.awayScore) { standings[hIdx].wins++; standings[aIdx].losses++; }
-                    else { standings[aIdx].wins++; standings[hIdx].losses++; }
+                    else if (match.awayScore > match.homeScore) { standings[aIdx].wins++; standings[hIdx].losses++; }
+                    // If tied (shouldn't happen normally), no win/loss recorded
                 }
             });
 
@@ -2290,6 +2294,9 @@
             const standings = state.teams.map(t => ({ id: t.id, name: t.name, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0 }));
 
             state.matches.forEach(match => {
+                // Skip marked-as-played matches (no actual scores)
+                if (match.markedPlayed) return;
+                
                 const sched = state.schedule.find(s => s.id === match.scheduleId);
                 if (!sched) return;
 
@@ -2309,7 +2316,8 @@
                     standings[aIdx].gamesWon += match.awayScore;
                     standings[aIdx].gamesLost += match.homeScore;
                     if (match.homeScore > match.awayScore) { standings[hIdx].wins++; standings[aIdx].losses++; }
-                    else { standings[aIdx].wins++; standings[hIdx].losses++; }
+                    else if (match.awayScore > match.homeScore) { standings[aIdx].wins++; standings[hIdx].losses++; }
+                    // If tied (shouldn't happen normally), no win/loss recorded
                 }
             });
 
@@ -2340,18 +2348,31 @@
         function calcPlayerStats() {
             const stats = [];
             state.teams.forEach(team => {
-                team.players.forEach(player => {
+                (team.players || []).forEach(player => {
                     stats.push({ id: player.id, name: player.name, team: team.name, matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 });
                 });
             });
 
             state.matches.forEach(match => {
-                match.matchups?.forEach(mu => {
+                // Skip marked-as-played matches (no player data)
+                if (match.markedPlayed) return;
+                
+                (match.matchups || []).forEach(mu => {
                     const hg = parseInt(mu.homeGames) || 0, ag = parseInt(mu.awayGames) || 0;
                     const hp = stats.find(s => s.id === mu.homePlayer);
                     const ap = stats.find(s => s.id === mu.awayPlayer);
-                    if (hp) { hp.gamesWon += hg; hp.gamesLost += ag; if (hg > ag) hp.matchWins++; else hp.matchLosses++; }
-                    if (ap) { ap.gamesWon += ag; ap.gamesLost += hg; if (ag > hg) ap.matchWins++; else ap.matchLosses++; }
+                    if (hp) { 
+                        hp.gamesWon += hg; 
+                        hp.gamesLost += ag; 
+                        if (hg > ag) hp.matchWins++; 
+                        else if (ag > hg) hp.matchLosses++; 
+                    }
+                    if (ap) { 
+                        ap.gamesWon += ag; 
+                        ap.gamesLost += hg; 
+                        if (ag > hg) ap.matchWins++; 
+                        else if (hg > ag) ap.matchLosses++; 
+                    }
                 });
             });
 
