@@ -48,6 +48,7 @@
                 date: '',
                 homeTeamId: '',
                 awayTeamId: '',
+                venue: '',
                 half: 1,
                 isPositionNight: false
             },
@@ -132,6 +133,7 @@
                 date: getNextPlayDate(),
                 homeTeamId: '',
                 awayTeamId: '',
+                venue: '',
                 half: 1,
                 isPositionNight: false
             };
@@ -160,7 +162,7 @@
                 date: entry.date,
                 homeTeamId: entry.homeTeamId,
                 awayTeamId: isBye ? 'BYE' : entry.awayTeamId,
-                venue: isBye ? 'BYE WEEK' : (state.teams.find(t => t.id === entry.homeTeamId)?.venue || 'TBD'),
+                venue: isBye ? 'BYE WEEK' : (entry.venue || state.teams.find(t => t.id === entry.homeTeamId)?.venue || 'TBD'),
                 isBye: isBye,
                 half: parseInt(entry.half) || 1,
                 isPositionNight: entry.isPositionNight
@@ -191,6 +193,7 @@
                 date: entry.date,
                 homeTeamId: '',
                 awayTeamId: '',
+                venue: '',
                 half: entry.half,
                 isPositionNight: entry.isPositionNight
             };
@@ -1119,7 +1122,7 @@
                             <div class="grid md:grid-cols-2 gap-4 mb-4">
                                 <div>
                                     <label class="block text-sm font-bold text-purple-700 mb-1">Home Team</label>
-                                    <select onchange="state.manualEntry.homeTeamId = this.value; render();"
+                                    <select onchange="state.manualEntry.homeTeamId = this.value; state.manualEntry.venue = state.teams.find(t => t.id === this.value)?.venue || ''; render();"
                                         class="w-full px-3 py-2 border-2 border-purple-300 rounded-lg">
                                         <option value="">Select home team...</option>
                                         ${state.teams.map(t => `
@@ -1139,6 +1142,21 @@
                                     </select>
                                 </div>
                             </div>
+                            
+                            ${state.manualEntry.awayTeamId !== 'BYE' ? `
+                            <div class="mb-4">
+                                <label class="block text-sm font-bold text-purple-700 mb-1">Venue</label>
+                                <select onchange="state.manualEntry.venue = this.value; render();"
+                                    class="w-full px-3 py-2 border-2 border-purple-300 rounded-lg">
+                                    <option value="">Select venue...</option>
+                                    ${[...new Set(state.teams.map(t => t.venue).filter(v => v && v.trim()))].map(venue => `
+                                        <option value="${venue}" ${state.manualEntry.venue === venue ? 'selected' : ''}>${venue}</option>
+                                    `).join('')}
+                                    <option value="TBD" ${state.manualEntry.venue === 'TBD' ? 'selected' : ''}>TBD</option>
+                                </select>
+                                <p class="text-xs text-purple-500 mt-1">Auto-filled from home team. Change if needed.</p>
+                            </div>
+                            ` : ''}
                             `}
 
                             <!-- Preview -->
@@ -1152,7 +1170,7 @@
                                             `🏆 ${state.manualEntry.awayTeamId}${getOrdinal(parseInt(state.manualEntry.awayTeamId) || 0)} Place @ ${state.manualEntry.homeTeamId}${getOrdinal(parseInt(state.manualEntry.homeTeamId) || 0)} Place`) :
                                         (state.manualEntry.awayTeamId === 'BYE' ?
                                             `🏖️ ${state.teams.find(t => t.id === state.manualEntry.homeTeamId)?.name || '?'} - BYE WEEK` :
-                                            `${state.teams.find(t => t.id === state.manualEntry.awayTeamId)?.name || '?'} @ ${state.teams.find(t => t.id === state.manualEntry.homeTeamId)?.name || '?'}`)
+                                            `${state.teams.find(t => t.id === state.manualEntry.awayTeamId)?.name || '?'} @ ${state.teams.find(t => t.id === state.manualEntry.homeTeamId)?.name || '?'}${state.manualEntry.venue ? ` (${state.manualEntry.venue})` : ''}`)
                                     }
                                 </span>
                             </div>
