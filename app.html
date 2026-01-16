@@ -204,72 +204,99 @@
         }
         
         function getNextWeekNumber() {
-            if (state.schedule.length === 0) return '1';
-            const maxWeek = Math.max(...state.schedule.map(s => parseInt(s.week) || 0));
-            return (maxWeek + 1).toString();
+            try {
+                if (!state.schedule || state.schedule.length === 0) return '1';
+                const maxWeek = Math.max(...state.schedule.map(s => parseInt(s.week) || 0));
+                return (maxWeek + 1).toString();
+            } catch (error) {
+                console.error('Error in getNextWeekNumber:', error);
+                return '1';
+            }
         }
 
         function getLastScheduleDate() {
-            if (state.schedule.length === 0) return null;
-            const sorted = [...state.schedule].sort((a, b) => new Date(b.date) - new Date(a.date));
-            return sorted[0]?.date || null;
+            try {
+                if (!state.schedule || state.schedule.length === 0) return null;
+                const sorted = [...state.schedule].sort((a, b) => new Date(b.date) - new Date(a.date));
+                return sorted[0]?.date || null;
+            } catch (error) {
+                console.error('Error in getLastScheduleDate:', error);
+                return null;
+            }
         }
 
         function getNextPlayDate(fromDate = null) {
-            const playDays = state.playDays;
-            if (playDays.length === 0) return '';
-            
-            let startDate;
-            if (fromDate) {
-                startDate = new Date(fromDate + 'T12:00:00'); // Use noon to avoid timezone issues
-                startDate.setDate(startDate.getDate() + 1); // Start from day after
-            } else {
-                const lastDate = getLastScheduleDate();
-                if (lastDate) {
-                    startDate = new Date(lastDate + 'T12:00:00');
-                    startDate.setDate(startDate.getDate() + 1);
+            try {
+                const playDays = state.playDays || [2]; // Default to Tuesday
+                if (!playDays || playDays.length === 0) {
+                    // Return today's date if no play days configured
+                    return new Date().toISOString().split('T')[0];
+                }
+                
+                let startDate;
+                if (fromDate) {
+                    startDate = new Date(fromDate + 'T12:00:00'); // Use noon to avoid timezone issues
+                    startDate.setDate(startDate.getDate() + 1); // Start from day after
                 } else {
-                    startDate = new Date();
+                    const lastDate = getLastScheduleDate();
+                    if (lastDate) {
+                        startDate = new Date(lastDate + 'T12:00:00');
+                        startDate.setDate(startDate.getDate() + 1);
+                    } else {
+                        startDate = new Date();
+                    }
                 }
-            }
-            
-            // Find the next play day
-            for (let i = 0; i < 14; i++) { // Look up to 2 weeks ahead
-                const checkDate = new Date(startDate);
-                checkDate.setDate(checkDate.getDate() + i);
-                if (playDays.includes(checkDate.getDay())) {
-                    return checkDate.toISOString().split('T')[0];
+                
+                // Find the next play day
+                for (let i = 0; i < 14; i++) { // Look up to 2 weeks ahead
+                    const checkDate = new Date(startDate);
+                    checkDate.setDate(checkDate.getDate() + i);
+                    if (playDays.includes(checkDate.getDay())) {
+                        return checkDate.toISOString().split('T')[0];
+                    }
                 }
+                
+                return startDate.toISOString().split('T')[0];
+            } catch (error) {
+                console.error('Error in getNextPlayDate:', error);
+                return new Date().toISOString().split('T')[0];
             }
-            
-            return startDate.toISOString().split('T')[0];
         }
         
         function initManualEntryDefaults() {
-            if (!state.manualMatch.week) {
-                state.manualMatch.week = getNextWeekNumber();
-            }
-            if (!state.manualMatch.date) {
-                state.manualMatch.date = getNextPlayDate();
-            }
-            // Set half from last schedule entry (or default to '1')
-            if (!state.manualMatch.half || state.manualMatch.half === '1') {
-                const lastHalf = getLastScheduleHalf();
-                if (lastHalf) {
-                    state.manualMatch.half = lastHalf.toString();
+            try {
+                if (!state.manualMatch.week) {
+                    state.manualMatch.week = getNextWeekNumber();
                 }
+                if (!state.manualMatch.date) {
+                    state.manualMatch.date = getNextPlayDate();
+                }
+                // Set half from last schedule entry (or default to '1')
+                if (!state.manualMatch.half || state.manualMatch.half === '1') {
+                    const lastHalf = getLastScheduleHalf();
+                    if (lastHalf) {
+                        state.manualMatch.half = lastHalf.toString();
+                    }
+                }
+            } catch (error) {
+                console.error('Error in initManualEntryDefaults:', error);
             }
         }
         
         function getLastScheduleHalf() {
-            if (state.schedule.length === 0) return 1;
-            // Get the most recently added entry (by highest week number, then by date)
-            const sorted = [...state.schedule].sort((a, b) => {
-                const weekDiff = parseInt(b.week) - parseInt(a.week);
-                if (weekDiff !== 0) return weekDiff;
-                return new Date(b.date) - new Date(a.date);
-            });
-            return sorted[0]?.half || 1;
+            try {
+                if (!state.schedule || state.schedule.length === 0) return 1;
+                // Get the most recently added entry (by highest week number, then by date)
+                const sorted = [...state.schedule].sort((a, b) => {
+                    const weekDiff = parseInt(b.week) - parseInt(a.week);
+                    if (weekDiff !== 0) return weekDiff;
+                    return new Date(b.date) - new Date(a.date);
+                });
+                return sorted[0]?.half || 1;
+            } catch (error) {
+                console.error('Error in getLastScheduleHalf:', error);
+                return 1;
+            }
         }
         
         function advanceToNextWeek() {
@@ -293,7 +320,7 @@
         // ============================================
         
         function initWeekMatches() {
-            const numTeams = state.teams.length;
+            const numTeams = (state.teams || []).length;
             const numMatches = Math.floor(numTeams / 2);
             const hasBye = numTeams % 2 === 1;
             
@@ -324,7 +351,7 @@
             
             // Auto-fill venue when home team is selected
             if (field === 'homeTeamId' && value) {
-                const team = state.teams.find(t => t.id === value);
+                const team = (state.teams || []).find(t => t.id === value);
                 if (team && team.venue && !state.weekMatches[index].isBye) {
                     state.weekMatches[index].venue = team.venue;
                 }
@@ -348,7 +375,7 @@
             const otherField = field === 'homeTeamId' ? 'awayTeamId' : 'homeTeamId';
             const otherValue = currentMatch[otherField];
             
-            return state.teams.filter(t => {
+            return (state.teams || []).filter(t => {
                 // Always show currently selected team
                 if (t.id === currentValue) return true;
                 // Don't show if already used elsewhere
@@ -2590,10 +2617,10 @@
         function renderManualScheduleEntry() {
             const m = state.manualMatch;
             const mode = state.manualEntryMode;
-            const allVenues = [...new Set([
-                ...state.venues,
-                ...state.teams.map(t => t.venue).filter(v => v && v.trim())
-            ])].filter(v => v).sort((a, b) => a.localeCompare(b));
+            // Venues can be either strings or objects with .name property
+            const venueNames = (state.venues || []).map(v => typeof v === 'string' ? v : v.name).filter(v => v);
+            const teamVenues = (state.teams || []).map(t => t.venue).filter(v => v && v.trim());
+            const allVenues = [...new Set([...venueNames, ...teamVenues])].filter(v => v).sort((a, b) => a.localeCompare(b));
             
             return `
                 <div class="bg-white rounded-xl shadow-lg p-6">
@@ -2720,7 +2747,7 @@
         
         // Single match entry form
         function renderSingleMatchEntry(m, allVenues) {
-            const sortedTeams = [...state.teams].sort((a, b) => a.name.localeCompare(b.name));
+            const sortedTeams = [...(state.teams || [])].sort((a, b) => a.name.localeCompare(b.name));
             return `
                 <div class="grid md:grid-cols-3 gap-4 mb-6">
                     <div>
@@ -2772,7 +2799,7 @@
         
         // Week entry form
         function renderWeekEntry(allVenues) {
-            const numTeams = state.teams.length;
+            const numTeams = (state.teams || []).length;
             
             if (numTeams < 2) {
                 return `
@@ -2792,7 +2819,7 @@
             return `
                 <div class="space-y-4 mb-6">
                     <div class="flex items-center justify-between">
-                        <h4 class="font-bold text-slate-700">Week ${state.manualMatch.week || '?'} Matches (${state.teams.length} teams)</h4>
+                        <h4 class="font-bold text-slate-700">Week ${state.manualMatch.week || '?'} Matches (${(state.teams || []).length} teams)</h4>
                         <button onclick="window.initWeekMatches(); window.render();" 
                             class="text-sm text-blue-600 hover:text-blue-800">🔄 Reset All</button>
                     </div>
@@ -2800,7 +2827,7 @@
                     ${state.weekMatches.map((match, idx) => {
                         const availableHome = getAvailableTeamsForSlot(match, 'homeTeamId');
                         const availableAway = getAvailableTeamsForSlot(match, 'awayTeamId');
-                        const homeTeam = state.teams.find(t => t.id === match.homeTeamId);
+                        const homeTeam = (state.teams || []).find(t => t.id === match.homeTeamId);
                         
                         if (match.isBye) {
                             // BYE slot
