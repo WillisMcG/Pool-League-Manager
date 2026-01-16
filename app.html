@@ -168,7 +168,7 @@
                 timesToPlay: 2          // how many times each team faces every other team (1, 2, 3, 4)
             },
             // Manual match form data
-            manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1' },
+            manualMatch: { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: '1', isPositionNight: false, positionHome: '', positionAway: '' },
             // Manual entry mode: 'single' or 'week'
             manualEntryMode: 'single',
             // Week entry data - array of matches for batch entry
@@ -1596,10 +1596,30 @@
         // ============================================
         async function addManualMatch() {
             const m = state.manualMatch;
+            const isPositionNight = m.isPositionNight || false;
             
-            if (!m.week || !m.date || !m.homeTeamId) {
-                alert('Please fill in week, date, and home team');
+            // Validation
+            if (!m.week || !m.date) {
+                alert('Please fill in week and date');
                 return;
+            }
+            
+            if (isPositionNight) {
+                // Position night validation
+                if (!m.positionHome) {
+                    alert('Please select the home position');
+                    return;
+                }
+                if (!m.positionAway && m.positionAway !== 'BYE') {
+                    alert('Please select the away position');
+                    return;
+                }
+            } else {
+                // Regular match validation
+                if (!m.homeTeamId) {
+                    alert('Please select a home team');
+                    return;
+                }
             }
             
             if (!state.currentSeason?.id) {
@@ -1612,23 +1632,44 @@
                 return;
             }
             
-            const isBye = m.awayTeamId === 'BYE' || !m.awayTeamId;
-            const homeTeam = state.teams.find(t => t.id === m.homeTeamId);
-            
             showLoading();
             try {
-                const scheduleEntry = {
-                    week: m.week,
-                    date: m.date,
-                    home_team_id: m.homeTeamId,
-                    away_team_id: isBye ? 'BYE' : m.awayTeamId,
-                    venue: m.venue || homeTeam?.venue || 'TBD',
-                    is_bye: isBye,
-                    half: parseInt(m.half) || 1,
-                    is_position_night: false,
-                    season_id: state.currentSeason.id,
-                    org_id: state.organization.id
-                };
+                let scheduleEntry;
+                
+                if (isPositionNight) {
+                    // Position night match
+                    const isBye = m.positionAway === 'BYE';
+                    scheduleEntry = {
+                        week: m.week,
+                        date: m.date,
+                        home_team_id: `POSITION_${m.positionHome}`,
+                        away_team_id: isBye ? 'BYE' : `POSITION_${m.positionAway}`,
+                        venue: m.venue || 'TBD - Based on Standings',
+                        is_bye: isBye,
+                        half: parseInt(m.half) || 1,
+                        is_position_night: true,
+                        position_home: parseInt(m.positionHome),
+                        position_away: isBye ? null : parseInt(m.positionAway),
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    };
+                } else {
+                    // Regular match
+                    const isBye = m.awayTeamId === 'BYE' || !m.awayTeamId;
+                    const homeTeam = (state.teams || []).find(t => t.id === m.homeTeamId);
+                    scheduleEntry = {
+                        week: m.week,
+                        date: m.date,
+                        home_team_id: m.homeTeamId,
+                        away_team_id: isBye ? 'BYE' : m.awayTeamId,
+                        venue: m.venue || homeTeam?.venue || 'TBD',
+                        is_bye: isBye,
+                        half: parseInt(m.half) || 1,
+                        is_position_night: false,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    };
+                }
                 
                 const { data, error } = await db.from('schedule').insert([scheduleEntry]).select().single();
                 
@@ -1644,6 +1685,8 @@
                     isBye: data.is_bye,
                     half: data.half,
                     isPositionNight: data.is_position_night,
+                    positionHome: data.position_home,
+                    positionAway: data.position_away,
                     seasonId: data.season_id,
                     orgId: data.org_id
                 });
@@ -1651,14 +1694,19 @@
                 // Sort schedule by week
                 state.schedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
                 
-                // Reset form but preserve the half selection
+                // Reset form but preserve the half selection and position night mode
                 const currentHalf = m.half;
-                state.manualMatch = { week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', half: currentHalf };
+                const keepPositionNight = m.isPositionNight;
+                state.manualMatch = { 
+                    week: '', date: '', homeTeamId: '', awayTeamId: '', venue: '', 
+                    half: currentHalf, isPositionNight: keepPositionNight, 
+                    positionHome: '', positionAway: '' 
+                };
                 
                 // Re-initialize defaults (will set next week/date)
                 initManualEntryDefaults();
                 
-                alert('Match added successfully!');
+                alert(`${isPositionNight ? 'Position night match' : 'Match'} added successfully!`);
                 render();
             } catch (error) {
                 console.error('Error adding match:', error);
@@ -2748,7 +2796,75 @@
         // Single match entry form
         function renderSingleMatchEntry(m, allVenues) {
             const sortedTeams = [...(state.teams || [])].sort((a, b) => a.name.localeCompare(b.name));
+            const numTeams = sortedTeams.length;
+            const isPositionNight = m.isPositionNight || false;
+            
             return `
+                <!-- Match Type Toggle -->
+                <div class="mb-6 p-4 bg-slate-50 rounded-lg border">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Match Type:</label>
+                    <div class="flex gap-2">
+                        <button onclick="window.state.manualMatch.isPositionNight = false; window.state.manualMatch.positionHome = ''; window.state.manualMatch.positionAway = ''; window.render();" 
+                            class="flex-1 py-2 rounded-lg font-semibold transition-all ${!isPositionNight 
+                                ? 'bg-emerald-600 text-white' 
+                                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}">
+                            🎱 Regular Match
+                        </button>
+                        <button onclick="window.state.manualMatch.isPositionNight = true; window.state.manualMatch.homeTeamId = ''; window.state.manualMatch.awayTeamId = ''; window.state.manualMatch.venue = 'TBD - Based on Standings'; window.render();" 
+                            class="flex-1 py-2 rounded-lg font-semibold transition-all ${isPositionNight 
+                                ? 'bg-purple-600 text-white' 
+                                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}">
+                            🏆 Position Night
+                        </button>
+                    </div>
+                </div>
+                
+                ${isPositionNight ? `
+                <!-- Position Night Entry -->
+                <div class="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 mb-6">
+                    <p class="text-purple-800 text-sm mb-4">
+                        <strong>🏆 Position Night:</strong> Teams will be matched by their standings position at game time.
+                    </p>
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-purple-700 mb-1">Away Position</label>
+                            <select id="manual-pos-away" 
+                                onchange="window.state.manualMatch.positionAway = this.value;"
+                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
+                                <option value="">Select position...</option>
+                                <option value="BYE" ${m.positionAway === 'BYE' ? 'selected' : ''}>🏖️ BYE</option>
+                                ${Array.from({length: numTeams}, (_, i) => i + 1).map(pos => `
+                                    <option value="${pos}" ${m.positionAway == pos ? 'selected' : ''}>${pos}${getOrdinal(pos)} Place</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-purple-700 mb-1">Home Position (hosts)</label>
+                            <select id="manual-pos-home" 
+                                onchange="window.state.manualMatch.positionHome = this.value;"
+                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
+                                <option value="">Select position...</option>
+                                ${Array.from({length: numTeams}, (_, i) => i + 1).map(pos => `
+                                    <option value="${pos}" ${m.positionHome == pos ? 'selected' : ''}>${pos}${getOrdinal(pos)} Place</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-purple-700 mb-1">Venue</label>
+                            <select id="manual-venue" 
+                                onchange="window.state.manualMatch.venue = this.value;"
+                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
+                                <option value="TBD - Based on Standings" ${m.venue === 'TBD - Based on Standings' ? 'selected' : ''}>TBD - Based on Standings</option>
+                                ${allVenues.map(v => `<option value="${v}" ${m.venue === v ? 'selected' : ''}>${v}</option>`).join('')}
+                            </select>
+                            <p class="text-xs text-purple-600 mt-1">Usually determined by home team's standing</p>
+                        </div>
+                    </div>
+                </div>
+                ` : `
+                <!-- Regular Match Entry -->
                 <div class="grid md:grid-cols-3 gap-4 mb-6">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 mb-1">Away Team</label>
@@ -2783,11 +2899,12 @@
                         <p class="text-xs text-slate-500 mt-1">Auto-fills from home team</p>
                     </div>
                 </div>
+                `}
                 
                 <div class="flex gap-4">
                     <button onclick="addManualMatch()" 
-                        class="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700">
-                        ➕ Add Match
+                        class="flex-1 py-3 ${isPositionNight ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold rounded-lg">
+                        ➕ Add ${isPositionNight ? 'Position Night' : ''} Match
                     </button>
                     <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
                         class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
