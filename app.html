@@ -4600,11 +4600,11 @@
                                     const hasAdj = adj.wins || adj.losses || adj.gamesWon || adj.gamesLost;
                                     
                                     return `
-                                        <tr class="hover:bg-emerald-50 ${hasAdj && !editing ? 'bg-amber-50' : ''}">
+                                        <tr class="hover:bg-emerald-50 ${isAdmin && hasAdj && !editing ? 'bg-amber-50' : ''}">
                                             <td class="px-4 py-3 font-black text-emerald-600">${i + 1}</td>
                                             <td class="px-4 py-3 font-bold">
                                                 ${t.name}
-                                                ${hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adjusted</span>' : ''}
+                                                ${isAdmin && hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adjusted</span>' : ''}
                                             </td>
                                             <td class="px-4 py-3 text-center">${t.wins}</td>
                                             <td class="px-4 py-3 text-center">${t.losses}</td>
@@ -4730,10 +4730,10 @@
                                     const hasAdj = adj.matchWins || adj.matchLosses || adj.gamesWon || adj.gamesLost;
                                     
                                     return `
-                                        <tr class="hover:bg-slate-50 ${hasAdj && !editing ? 'bg-amber-50' : ''}">
+                                        <tr class="hover:bg-slate-50 ${isAdmin && hasAdj && !editing ? 'bg-amber-50' : ''}">
                                             <td class="px-4 py-3 font-semibold">
                                                 ${p.name}
-                                                ${hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adj</span>' : ''}
+                                                ${isAdmin && hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adj</span>' : ''}
                                             </td>
                                             <td class="px-4 py-3 text-slate-600">${p.team}</td>
                                             <td class="px-4 py-3 text-center">${p.matchWins}</td>
