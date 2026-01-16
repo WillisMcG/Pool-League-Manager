@@ -156,6 +156,8 @@
             selectedHistoryMatch: null,
             standingsAdjustments: {}, // { teamId: { wins: +/- num, losses: +/- num, gamesWon: +/- num, gamesLost: +/- num } }
             editingStandings: false,
+            playerStatsAdjustments: {}, // { playerId: { matchWins: +/-, matchLosses: +/-, gamesWon: +/-, gamesLost: +/- } }
+            editingPlayerStats: false,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -683,7 +685,8 @@
                 state.seasons = (seasons || []).map(s => ({
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
                     isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id,
-                    standingsAdjustments: s.standings_adjustments || {}
+                    standingsAdjustments: s.standings_adjustments || {},
+                    playerStatsAdjustments: s.player_stats_adjustments || {}
                 }));
                 
                 // Set current season to active non-archived one, or most recent non-archived
@@ -728,6 +731,7 @@
             
             // Load standings adjustments from current season
             state.standingsAdjustments = state.currentSeason?.standingsAdjustments || {};
+            state.playerStatsAdjustments = state.currentSeason?.playerStatsAdjustments || {};
             
             if (seasonId) {
                 const { data: schedule } = await db.from('schedule').select('*').eq('season_id', seasonId);
@@ -843,6 +847,56 @@
             }
             state.standingsAdjustments[teamId].wins += winsDelta;
             state.standingsAdjustments[teamId].losses += lossesDelta;
+            render();
+        }
+
+        async function savePlayerStatsAdjustments() {
+            if (!state.currentSeason?.id) {
+                alert('No season selected');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const { error } = await db.from('seasons')
+                    .update({ player_stats_adjustments: state.playerStatsAdjustments })
+                    .eq('id', state.currentSeason.id);
+                
+                if (error) throw error;
+                
+                // Update local season data
+                state.currentSeason.playerStatsAdjustments = state.playerStatsAdjustments;
+                const seasonIdx = state.seasons.findIndex(s => s.id === state.currentSeason.id);
+                if (seasonIdx !== -1) {
+                    state.seasons[seasonIdx].playerStatsAdjustments = state.playerStatsAdjustments;
+                }
+                
+                alert('Player stats adjustments saved!');
+                state.editingPlayerStats = false;
+                render();
+            } catch (error) {
+                console.error('Error saving player stats adjustments:', error);
+                alert('Error saving adjustments: ' + (error.message || 'Unknown error'));
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function updatePlayerStatsAdjustment(playerId, field, value) {
+            const numValue = parseInt(value) || 0;
+            if (!state.playerStatsAdjustments[playerId]) {
+                state.playerStatsAdjustments[playerId] = { matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 };
+            }
+            state.playerStatsAdjustments[playerId][field] = numValue;
+            render();
+        }
+
+        function quickPlayerAdjust(playerId, matchWinsDelta, matchLossesDelta) {
+            if (!state.playerStatsAdjustments[playerId]) {
+                state.playerStatsAdjustments[playerId] = { matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 };
+            }
+            state.playerStatsAdjustments[playerId].matchWins += matchWinsDelta;
+            state.playerStatsAdjustments[playerId].matchLosses += matchLossesDelta;
             render();
         }
 
@@ -2417,7 +2471,7 @@
             const stats = [];
             state.teams.forEach(team => {
                 (team.players || []).forEach(player => {
-                    stats.push({ id: player.id, name: player.name, team: team.name, matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 });
+                    stats.push({ id: player.id, name: player.name, team: team.name, teamId: team.id, matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 });
                 });
             });
 
@@ -2442,6 +2496,18 @@
                         else if (hg > ag) ap.matchLosses++; 
                     }
                 });
+            });
+
+            // Apply manual adjustments from admin
+            stats.forEach(player => {
+                const adj = state.playerStatsAdjustments[player.id];
+                if (adj) {
+                    player.matchWins += (adj.matchWins || 0);
+                    player.matchLosses += (adj.matchLosses || 0);
+                    player.gamesWon += (adj.gamesWon || 0);
+                    player.gamesLost += (adj.gamesLost || 0);
+                    player.hasAdjustment = true;
+                }
             });
 
             return stats.sort((a, b) => b.matchWins - a.matchWins || b.gamesWon - a.gamesWon);
@@ -4477,11 +4543,45 @@
 
         function renderPlayerStats() {
             const stats = calcPlayerStats();
+            const isAdmin = state.currentUser?.role === 'admin';
+            const editing = state.editingPlayerStats;
+            
+            // Group players by team for the quick adjust section
+            const teamGroups = {};
+            stats.forEach(p => {
+                if (!teamGroups[p.team]) teamGroups[p.team] = [];
+                teamGroups[p.team].push(p);
+            });
+            
             return `
                 <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
+                    <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6 flex justify-between items-center">
                         <h2 class="text-3xl font-black">👤 Player Stats</h2>
+                        ${isAdmin ? `
+                            ${editing ? `
+                                <div class="flex gap-2">
+                                    <button onclick="savePlayerStatsAdjustments()" class="px-4 py-2 bg-white text-emerald-700 font-bold rounded-lg hover:bg-emerald-50">
+                                        💾 Save Changes
+                                    </button>
+                                    <button onclick="state.editingPlayerStats = false; render();" class="px-4 py-2 bg-emerald-800 text-white font-bold rounded-lg hover:bg-emerald-900">
+                                        ✕ Cancel
+                                    </button>
+                                </div>
+                            ` : `
+                                <button onclick="state.editingPlayerStats = true; render();" class="px-4 py-2 bg-white/20 text-white font-bold rounded-lg hover:bg-white/30">
+                                    ✏️ Edit Stats
+                                </button>
+                            `}
+                        ` : ''}
                     </div>
+                    
+                    ${editing ? `
+                        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                            <h3 class="font-bold text-amber-800 mb-2">📝 Editing Mode</h3>
+                            <p class="text-sm text-amber-700">Enter adjustments to add/subtract from calculated stats. Use negative numbers to subtract.</p>
+                        </div>
+                    ` : ''}
+                    
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                         <table class="w-full">
                             <thead class="bg-slate-100">
@@ -4493,27 +4593,87 @@
                                     <th class="px-4 py-3 text-center">GW</th>
                                     <th class="px-4 py-3 text-center">GL</th>
                                     <th class="px-4 py-3 text-center">%</th>
+                                    ${editing ? '<th class="px-4 py-3 text-center">Adjustments</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody class="divide-y">
                                 ${stats.map(p => {
                                     const total = p.matchWins + p.matchLosses;
                                     const pct = total > 0 ? ((p.matchWins / total) * 100).toFixed(1) : '0.0';
+                                    const adj = state.playerStatsAdjustments[p.id] || { matchWins: 0, matchLosses: 0, gamesWon: 0, gamesLost: 0 };
+                                    const hasAdj = adj.matchWins || adj.matchLosses || adj.gamesWon || adj.gamesLost;
+                                    
                                     return `
-                                        <tr class="hover:bg-slate-50">
-                                            <td class="px-4 py-3 font-semibold">${p.name}</td>
+                                        <tr class="hover:bg-slate-50 ${hasAdj && !editing ? 'bg-amber-50' : ''}">
+                                            <td class="px-4 py-3 font-semibold">
+                                                ${p.name}
+                                                ${hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adj</span>' : ''}
+                                            </td>
                                             <td class="px-4 py-3 text-slate-600">${p.team}</td>
                                             <td class="px-4 py-3 text-center">${p.matchWins}</td>
                                             <td class="px-4 py-3 text-center">${p.matchLosses}</td>
                                             <td class="px-4 py-3 text-center">${p.gamesWon}</td>
                                             <td class="px-4 py-3 text-center">${p.gamesLost}</td>
                                             <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
+                                            ${editing ? `
+                                                <td class="px-2 py-2">
+                                                    <div class="flex gap-1 items-center text-xs">
+                                                        <label class="text-gray-500">MW:</label>
+                                                        <input type="number" 
+                                                            value="${adj.matchWins || 0}" 
+                                                            onchange="updatePlayerStatsAdjustment('${p.id}', 'matchWins', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">ML:</label>
+                                                        <input type="number" 
+                                                            value="${adj.matchLosses || 0}" 
+                                                            onchange="updatePlayerStatsAdjustment('${p.id}', 'matchLosses', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">GW:</label>
+                                                        <input type="number" 
+                                                            value="${adj.gamesWon || 0}" 
+                                                            onchange="updatePlayerStatsAdjustment('${p.id}', 'gamesWon', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                        <label class="text-gray-500 ml-1">GL:</label>
+                                                        <input type="number" 
+                                                            value="${adj.gamesLost || 0}" 
+                                                            onchange="updatePlayerStatsAdjustment('${p.id}', 'gamesLost', this.value)"
+                                                            class="w-12 px-1 py-1 border rounded text-center text-sm">
+                                                    </div>
+                                                </td>
+                                            ` : ''}
                                         </tr>
                                     `;
                                 }).join('')}
                             </tbody>
                         </table>
                     </div>
+                    
+                    ${editing ? `
+                        <div class="bg-white rounded-xl shadow-lg p-4">
+                            <h3 class="font-bold mb-3">Quick Adjustment by Team</h3>
+                            <p class="text-sm text-gray-600 mb-3">Click buttons to quickly adjust match wins/losses:</p>
+                            <div class="space-y-4">
+                                ${Object.entries(teamGroups).map(([teamName, players]) => `
+                                    <div class="border rounded-lg p-3">
+                                        <h4 class="font-semibold text-emerald-700 mb-2">${teamName}</h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                            ${players.map(p => `
+                                                <div class="flex items-center justify-between bg-slate-50 p-2 rounded">
+                                                    <span class="text-sm font-medium">${p.name}</span>
+                                                    <div class="flex gap-1">
+                                                        <button onclick="quickPlayerAdjust('${p.id}', 1, 0)" class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200">+MW</button>
+                                                        <button onclick="quickPlayerAdjust('${p.id}', -1, 0)" class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200">-MW</button>
+                                                        <button onclick="quickPlayerAdjust('${p.id}', 0, 1)" class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200">+ML</button>
+                                                        <button onclick="quickPlayerAdjust('${p.id}', 0, -1)" class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200">-ML</button>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -5646,6 +5806,11 @@
         window.saveStandingsAdjustments = saveStandingsAdjustments;
         window.updateStandingsAdjustment = updateStandingsAdjustment;
         window.quickAdjust = quickAdjust;
+        
+        // Player stats adjustment functions
+        window.savePlayerStatsAdjustments = savePlayerStatsAdjustments;
+        window.updatePlayerStatsAdjustment = updatePlayerStatsAdjustment;
+        window.quickPlayerAdjust = quickPlayerAdjust;
         
         // Schedule creation functions
         window.addManualMatch = addManualMatch;
