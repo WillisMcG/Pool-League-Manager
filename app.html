@@ -153,6 +153,7 @@
             showManageSeasons: false,
             showArchivedSeasons: false,
             showFullSchedule: false,
+            selectedHistoryMatch: null,
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -4277,6 +4278,16 @@
 
         function renderHistory() {
             const completed = state.schedule.filter(s => !s.isBye && state.matches.find(m => m.scheduleId === s.id)).sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // Helper to get player name by ID
+            const getPlayerName = (playerId) => {
+                for (const team of state.teams) {
+                    const player = (team.players || []).find(p => p.id === playerId);
+                    if (player) return player.name;
+                }
+                return 'Unknown';
+            };
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
@@ -4286,15 +4297,69 @@
                         const match = state.matches.find(m => m.scheduleId === sched.id);
                         const home = state.teams.find(t => t.id === sched.homeTeamId);
                         const away = state.teams.find(t => t.id === sched.awayTeamId);
+                        const isExpanded = state.selectedHistoryMatch === sched.id;
+                        const matchups = match.matchups || [];
+                        
                         return `
-                            <div class="bg-white rounded-xl shadow-lg p-6">
-                                <div class="flex justify-between items-center">
-                                    <div>
-                                        <h3 class="text-xl font-bold">${away?.name} @ ${home?.name}</h3>
-                                        <p class="text-slate-600">Week ${sched.week} • ${sched.date}</p>
+                            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                                <div class="p-6 cursor-pointer hover:bg-slate-50 transition-colors" onclick="window.state.selectedHistoryMatch = window.state.selectedHistoryMatch === '${sched.id}' ? null : '${sched.id}'; window.render();">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <h3 class="text-xl font-bold">${away?.name} @ ${home?.name}</h3>
+                                            <p class="text-slate-600">Week ${sched.week} • ${sched.date}</p>
+                                        </div>
+                                        <div class="flex items-center gap-4">
+                                            <div class="text-3xl font-black text-emerald-700">${match.awayScore} - ${match.homeScore}</div>
+                                            <span class="text-slate-400 text-xl">${isExpanded ? '▲' : '▼'}</span>
+                                        </div>
                                     </div>
-                                    <div class="text-3xl font-black text-emerald-700">${match.awayScore} - ${match.homeScore}</div>
                                 </div>
+                                
+                                ${isExpanded ? `
+                                <div class="border-t bg-slate-50 p-6">
+                                    <h4 class="font-bold text-slate-700 mb-4">Match Details</h4>
+                                    ${matchups.length === 0 ? `
+                                        <p class="text-slate-500 text-center py-4">No detailed matchup data available</p>
+                                    ` : `
+                                        <div class="space-y-3">
+                                            ${matchups.map((mu, idx) => {
+                                                const homePlayer = getPlayerName(mu.homePlayer);
+                                                const awayPlayer = getPlayerName(mu.awayPlayer);
+                                                const homeWon = parseInt(mu.homeGames) > parseInt(mu.awayGames);
+                                                const awayWon = parseInt(mu.awayGames) > parseInt(mu.homeGames);
+                                                return `
+                                                    <div class="flex items-center justify-between p-3 bg-white rounded-lg border ${homeWon ? 'border-l-4 border-l-emerald-500' : awayWon ? 'border-r-4 border-r-emerald-500' : ''}">
+                                                        <div class="flex-1 text-left">
+                                                            <span class="${homeWon ? 'font-bold text-emerald-700' : 'text-slate-600'}">${homePlayer}</span>
+                                                            <span class="text-xs text-slate-400 ml-1">(${home?.name})</span>
+                                                        </div>
+                                                        <div class="px-4 text-center">
+                                                            <span class="font-mono font-bold text-lg ${homeWon ? 'text-emerald-600' : 'text-slate-400'}">${mu.homeGames || 0}</span>
+                                                            <span class="text-slate-400 mx-2">-</span>
+                                                            <span class="font-mono font-bold text-lg ${awayWon ? 'text-emerald-600' : 'text-slate-400'}">${mu.awayGames || 0}</span>
+                                                        </div>
+                                                        <div class="flex-1 text-right">
+                                                            <span class="text-xs text-slate-400 mr-1">(${away?.name})</span>
+                                                            <span class="${awayWon ? 'font-bold text-emerald-700' : 'text-slate-600'}">${awayPlayer}</span>
+                                                        </div>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                        
+                                        <div class="mt-4 pt-4 border-t flex justify-between text-sm text-slate-600">
+                                            <div>
+                                                <span class="font-semibold">${home?.name}:</span> 
+                                                ${matchups.filter(m => parseInt(m.homeGames) > parseInt(m.awayGames)).length} wins
+                                            </div>
+                                            <div>
+                                                <span class="font-semibold">${away?.name}:</span> 
+                                                ${matchups.filter(m => parseInt(m.awayGames) > parseInt(m.homeGames)).length} wins
+                                            </div>
+                                        </div>
+                                    `}
+                                </div>
+                                ` : ''}
                             </div>
                         `;
                     }).join('')}
