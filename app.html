@@ -221,12 +221,12 @@
             
             let startDate;
             if (fromDate) {
-                startDate = new Date(fromDate);
+                startDate = new Date(fromDate + 'T12:00:00'); // Use noon to avoid timezone issues
                 startDate.setDate(startDate.getDate() + 1); // Start from day after
             } else {
                 const lastDate = getLastScheduleDate();
                 if (lastDate) {
-                    startDate = new Date(lastDate);
+                    startDate = new Date(lastDate + 'T12:00:00');
                     startDate.setDate(startDate.getDate() + 1);
                 } else {
                     startDate = new Date();
@@ -274,9 +274,17 @@
         
         function advanceToNextWeek() {
             const nextWeek = (parseInt(state.manualMatch.week || '0') + 1).toString();
-            const nextDate = getNextPlayDate(state.manualMatch.date);
+            
+            // Add exactly 7 days to advance to next week
+            if (state.manualMatch.date) {
+                const currentDate = new Date(state.manualMatch.date + 'T12:00:00'); // Use noon to avoid timezone issues
+                currentDate.setDate(currentDate.getDate() + 7);
+                state.manualMatch.date = currentDate.toISOString().split('T')[0];
+            } else {
+                state.manualMatch.date = getNextPlayDate();
+            }
+            
             state.manualMatch.week = nextWeek;
-            state.manualMatch.date = nextDate;
             render();
         }
         
@@ -456,7 +464,11 @@
                 // Advance to next week and reset matches
                 const currentHalf = m.half;
                 const nextWeek = (parseInt(m.week) + 1).toString();
-                const nextDate = getNextPlayDate(m.date);
+                
+                // Add exactly 7 days for next week
+                const currentDate = new Date(m.date + 'T12:00:00');
+                currentDate.setDate(currentDate.getDate() + 7);
+                const nextDate = currentDate.toISOString().split('T')[0];
                 
                 state.manualMatch = { 
                     week: nextWeek, 
