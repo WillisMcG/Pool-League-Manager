@@ -2397,6 +2397,18 @@
                 }
             });
 
+            // Apply manual adjustments from admin (same as calcStandings)
+            standings.forEach(team => {
+                const adj = state.standingsAdjustments[team.id];
+                if (adj) {
+                    team.wins += (adj.wins || 0);
+                    team.losses += (adj.losses || 0);
+                    team.gamesWon += (adj.gamesWon || 0);
+                    team.gamesLost += (adj.gamesLost || 0);
+                    team.hasAdjustment = true;
+                }
+            });
+
             return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
         }
 
