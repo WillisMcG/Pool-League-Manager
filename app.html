@@ -2409,7 +2409,49 @@
                 }
             });
 
-            return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
+            // Sort with head-to-head tiebreaker (only considering matches up to this half)
+            return standings.sort((a, b) => {
+                // First: sort by wins
+                if (b.wins !== a.wins) return b.wins - a.wins;
+                // Second: sort by games won
+                if (b.gamesWon !== a.gamesWon) return b.gamesWon - a.gamesWon;
+                // Third: head-to-head tiebreaker (only matches up to this half)
+                const h2h = getHeadToHeadForHalf(a.id, b.id, upToHalf);
+                if (h2h !== 0) return h2h;
+                // Finally: alphabetical by name
+                return a.name.localeCompare(b.name);
+            });
+        }
+        
+        // Get head-to-head result between two teams up to a specific half
+        function getHeadToHeadForHalf(teamAId, teamBId, upToHalf) {
+            let teamAWins = 0;
+            let teamBWins = 0;
+            
+            state.matches.forEach(match => {
+                if (match.markedPlayed) return;
+                
+                const sched = state.schedule.find(s => s.id === match.scheduleId);
+                if (!sched || sched.half > upToHalf || sched.isPositionNight) return;
+                
+                // Check if this match is between the two teams
+                const isMatchBetween = 
+                    (sched.homeTeamId === teamAId && sched.awayTeamId === teamBId) ||
+                    (sched.homeTeamId === teamBId && sched.awayTeamId === teamAId);
+                
+                if (!isMatchBetween) return;
+                
+                // Determine winner
+                if (match.homeScore > match.awayScore) {
+                    if (sched.homeTeamId === teamAId) teamAWins++;
+                    else teamBWins++;
+                } else if (match.awayScore > match.homeScore) {
+                    if (sched.awayTeamId === teamAId) teamAWins++;
+                    else teamBWins++;
+                }
+            });
+            
+            return teamBWins - teamAWins;
         }
 
         function calcStandings() {
@@ -2476,7 +2518,53 @@
                 }
             });
 
-            return standings.sort((a, b) => b.wins - a.wins || b.gamesWon - a.gamesWon);
+            // Sort with head-to-head tiebreaker
+            return standings.sort((a, b) => {
+                // First: sort by wins
+                if (b.wins !== a.wins) return b.wins - a.wins;
+                // Second: sort by games won
+                if (b.gamesWon !== a.gamesWon) return b.gamesWon - a.gamesWon;
+                // Third: head-to-head tiebreaker
+                const h2h = getHeadToHead(a.id, b.id);
+                if (h2h !== 0) return h2h; // positive means a wins, negative means b wins
+                // Finally: alphabetical by name
+                return a.name.localeCompare(b.name);
+            });
+        }
+        
+        // Get head-to-head result between two teams
+        // Returns: positive if teamA won more, negative if teamB won more, 0 if tied or no matches
+        function getHeadToHead(teamAId, teamBId) {
+            let teamAWins = 0;
+            let teamBWins = 0;
+            
+            state.matches.forEach(match => {
+                if (match.markedPlayed) return;
+                
+                const sched = state.schedule.find(s => s.id === match.scheduleId);
+                if (!sched || sched.isPositionNight) return;
+                
+                // Check if this match is between the two teams
+                const isMatchBetween = 
+                    (sched.homeTeamId === teamAId && sched.awayTeamId === teamBId) ||
+                    (sched.homeTeamId === teamBId && sched.awayTeamId === teamAId);
+                
+                if (!isMatchBetween) return;
+                
+                // Determine winner
+                if (match.homeScore > match.awayScore) {
+                    // Home team won
+                    if (sched.homeTeamId === teamAId) teamAWins++;
+                    else teamBWins++;
+                } else if (match.awayScore > match.homeScore) {
+                    // Away team won
+                    if (sched.awayTeamId === teamAId) teamAWins++;
+                    else teamBWins++;
+                }
+            });
+            
+            // Return difference (positive = teamA ahead, negative = teamB ahead)
+            return teamBWins - teamAWins; // Note: reversed because sort expects negative for "a comes first"
         }
 
         function calcPlayerStats() {
