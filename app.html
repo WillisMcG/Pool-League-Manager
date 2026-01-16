@@ -518,6 +518,133 @@
                 hideLoading();
             }
         }
+        
+        async function addPositionNightMatches() {
+            const m = state.manualMatch;
+            
+            if (!m.week || !m.date) {
+                alert('Please fill in week and date');
+                return;
+            }
+            
+            if (!state.currentSeason?.id) {
+                alert('Please create or select a season first');
+                return;
+            }
+            
+            if (!state.organization?.id) {
+                alert('No organization loaded');
+                return;
+            }
+            
+            const numTeams = (state.teams || []).length;
+            if (numTeams < 2) {
+                alert('You need at least 2 teams');
+                return;
+            }
+            
+            const numMatches = Math.floor(numTeams / 2);
+            const hasBye = numTeams % 2 === 1;
+            
+            showLoading();
+            try {
+                const scheduleEntries = [];
+                
+                // Generate position matchups: 1st vs 2nd, 3rd vs 4th, etc.
+                for (let i = 0; i < numMatches; i++) {
+                    const homePosition = i * 2 + 1;  // 1st, 3rd, 5th... (higher seed hosts)
+                    const awayPosition = i * 2 + 2;  // 2nd, 4th, 6th...
+                    
+                    scheduleEntries.push({
+                        week: m.week,
+                        date: m.date,
+                        home_team_id: `POSITION_${homePosition}`,
+                        away_team_id: `POSITION_${awayPosition}`,
+                        venue: 'TBD - Based on Standings',
+                        is_bye: false,
+                        half: parseInt(m.half) || 1,
+                        is_position_night: true,
+                        position_home: homePosition,
+                        position_away: awayPosition,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    });
+                }
+                
+                // Add BYE for last place if odd number of teams
+                if (hasBye) {
+                    scheduleEntries.push({
+                        week: m.week,
+                        date: m.date,
+                        home_team_id: `POSITION_${numTeams}`,
+                        away_team_id: 'BYE',
+                        venue: 'BYE WEEK',
+                        is_bye: true,
+                        half: parseInt(m.half) || 1,
+                        is_position_night: true,
+                        position_home: numTeams,
+                        position_away: null,
+                        season_id: state.currentSeason.id,
+                        org_id: state.organization.id
+                    });
+                }
+                
+                const { data, error } = await db.from('schedule').insert(scheduleEntries).select();
+                
+                if (error) throw error;
+                
+                // Add to local state
+                data.forEach(entry => {
+                    state.schedule.push({
+                        id: entry.id,
+                        week: entry.week,
+                        date: entry.date,
+                        homeTeamId: entry.home_team_id,
+                        awayTeamId: entry.away_team_id,
+                        venue: entry.venue,
+                        isBye: entry.is_bye,
+                        half: entry.half,
+                        isPositionNight: entry.is_position_night,
+                        positionHome: entry.position_home,
+                        positionAway: entry.position_away,
+                        seasonId: entry.season_id,
+                        orgId: entry.org_id
+                    });
+                });
+                
+                // Sort schedule by week
+                state.schedule.sort((a, b) => parseInt(a.week) - parseInt(b.week));
+                
+                // Advance to next week
+                const currentHalf = m.half;
+                const nextWeek = (parseInt(m.week) + 1).toString();
+                
+                // Add exactly 7 days for next week
+                const currentDate = new Date(m.date + 'T12:00:00');
+                currentDate.setDate(currentDate.getDate() + 7);
+                const nextDate = currentDate.toISOString().split('T')[0];
+                
+                state.manualMatch = { 
+                    week: nextWeek, 
+                    date: nextDate, 
+                    homeTeamId: '', 
+                    awayTeamId: '', 
+                    venue: '', 
+                    half: currentHalf,
+                    isPositionNight: false,
+                    positionHome: '',
+                    positionAway: ''
+                };
+                
+                alert(`Position Night added! ${numMatches} matches${hasBye ? ' + 1 BYE' : ''} for Week ${m.week}`);
+                render();
+            } catch (error) {
+                console.error('Error adding position night:', error);
+                alert('Error adding position night: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
 
         // ============================================
         // DATABASE OPERATIONS
@@ -2799,6 +2926,10 @@
             const numTeams = sortedTeams.length;
             const isPositionNight = m.isPositionNight || false;
             
+            // Calculate position night matchups
+            const numPositionMatches = Math.floor(numTeams / 2);
+            const hasPositionBye = numTeams % 2 === 1;
+            
             return `
                 <!-- Match Type Toggle -->
                 <div class="mb-6 p-4 bg-slate-50 rounded-lg border">
@@ -2820,48 +2951,53 @@
                 </div>
                 
                 ${isPositionNight ? `
-                <!-- Position Night Entry -->
+                <!-- Position Night Batch Entry -->
                 <div class="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 mb-6">
-                    <p class="text-purple-800 text-sm mb-4">
-                        <strong>🏆 Position Night:</strong> Teams will be matched by their standings position at game time.
+                    <h4 class="font-bold text-purple-800 mb-2">🏆 Position Night Matches</h4>
+                    <p class="text-purple-700 text-sm mb-4">
+                        Teams are matched by standings: 1st vs 2nd, 3rd vs 4th, etc. 
+                        Matches will be added for Week ${m.week || '?'} on ${m.date || '(select date)'}.
                     </p>
-                    <div class="grid md:grid-cols-3 gap-4">
-                        <div>
-                            <label class="block text-sm font-semibold text-purple-700 mb-1">Away Position</label>
-                            <select id="manual-pos-away" 
-                                onchange="window.state.manualMatch.positionAway = this.value;"
-                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
-                                <option value="">Select position...</option>
-                                <option value="BYE" ${m.positionAway === 'BYE' ? 'selected' : ''}>🏖️ BYE</option>
-                                ${Array.from({length: numTeams}, (_, i) => i + 1).map(pos => `
-                                    <option value="${pos}" ${m.positionAway == pos ? 'selected' : ''}>${pos}${getOrdinal(pos)} Place</option>
-                                `).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-purple-700 mb-1">Home Position (hosts)</label>
-                            <select id="manual-pos-home" 
-                                onchange="window.state.manualMatch.positionHome = this.value;"
-                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
-                                <option value="">Select position...</option>
-                                ${Array.from({length: numTeams}, (_, i) => i + 1).map(pos => `
-                                    <option value="${pos}" ${m.positionHome == pos ? 'selected' : ''}>${pos}${getOrdinal(pos)} Place</option>
-                                `).join('')}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-semibold text-purple-700 mb-1">Venue</label>
-                            <select id="manual-venue" 
-                                onchange="window.state.manualMatch.venue = this.value;"
-                                class="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 bg-white">
-                                <option value="TBD - Based on Standings" ${m.venue === 'TBD - Based on Standings' ? 'selected' : ''}>TBD - Based on Standings</option>
-                                ${allVenues.map(v => `<option value="${v}" ${m.venue === v ? 'selected' : ''}>${v}</option>`).join('')}
-                            </select>
-                            <p class="text-xs text-purple-600 mt-1">Usually determined by home team's standing</p>
+                    
+                    <div class="bg-white rounded-lg p-4 mb-4">
+                        <h5 class="font-semibold text-purple-800 mb-3">Matches to be created (${numPositionMatches}${hasPositionBye ? ' + 1 bye' : ''}):</h5>
+                        <div class="space-y-2">
+                            ${Array.from({length: numPositionMatches}, (_, i) => {
+                                const pos1 = i * 2 + 1;
+                                const pos2 = i * 2 + 2;
+                                return `
+                                    <div class="flex items-center gap-2 text-sm">
+                                        <span class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold">${i + 1}</span>
+                                        <span class="text-purple-700">${pos2}${getOrdinal(pos2)} Place</span>
+                                        <span class="text-slate-400">@</span>
+                                        <span class="text-purple-700 font-semibold">${pos1}${getOrdinal(pos1)} Place</span>
+                                        <span class="text-slate-400 text-xs">(${pos1}${getOrdinal(pos1)} hosts)</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                            ${hasPositionBye ? `
+                                <div class="flex items-center gap-2 text-sm text-blue-600">
+                                    <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold">🏖️</span>
+                                    <span>${numTeams}${getOrdinal(numTeams)} Place - BYE</span>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
+                    
+                    <p class="text-xs text-purple-600 mb-2">
+                        ℹ️ Venue will be determined by home team's standings position at game time.
+                    </p>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button onclick="window.addPositionNightMatches()" 
+                        class="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg">
+                        🏆 Add All Position Night Matches (${numPositionMatches}${hasPositionBye ? ' + bye' : ''})
+                    </button>
+                    <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
+                        class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
+                        Done
+                    </button>
                 </div>
                 ` : `
                 <!-- Regular Match Entry -->
@@ -2899,18 +3035,18 @@
                         <p class="text-xs text-slate-500 mt-1">Auto-fills from home team</p>
                     </div>
                 </div>
-                `}
                 
                 <div class="flex gap-4">
                     <button onclick="addManualMatch()" 
-                        class="flex-1 py-3 ${isPositionNight ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold rounded-lg">
-                        ➕ Add ${isPositionNight ? 'Position Night' : ''} Match
+                        class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg">
+                        ➕ Add Match
                     </button>
                     <button onclick="window.state.scheduleMode = null; window.state.autoGenMode = null; window.render();" 
                         class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
                         Done
                     </button>
                 </div>
+                `}
             `;
         }
         
@@ -5064,6 +5200,7 @@
         window.initWeekMatches = initWeekMatches;
         window.updateWeekMatch = updateWeekMatch;
         window.addWeekMatches = addWeekMatches;
+        window.addPositionNightMatches = addPositionNightMatches;
         window.getAvailableTeamsForSlot = getAvailableTeamsForSlot;
         window.getUsedTeamsInWeek = getUsedTeamsInWeek;
         
