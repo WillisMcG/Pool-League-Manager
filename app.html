@@ -1617,8 +1617,30 @@
             
             showLoading();
             try {
+                // Update team's captain field
                 await db.from('teams').update({ captain: captainName }).eq('id', teamId);
                 state.teams = state.teams.map(t => t.id === teamId ? { ...t, captain: captainName } : t);
+                
+                // Find the player object to get their ID
+                const player = team.players.find(p => p.name === captainName);
+                
+                // Find the corresponding user (by playerId or matching username)
+                let captainUser = null;
+                if (player) {
+                    captainUser = state.users.find(u => u.playerId === player.id);
+                }
+                if (!captainUser) {
+                    // Fallback: try to find user by matching username to player name
+                    captainUser = state.users.find(u => u.username === captainName);
+                }
+                
+                // Update user's role to 'captain' if found and not already admin
+                if (captainUser && captainUser.role !== 'admin') {
+                    await db.from('users').update({ role: 'captain' }).eq('id', captainUser.id);
+                    state.users = state.users.map(u => u.id === captainUser.id ? { ...u, role: 'captain' } : u);
+                    console.log(`Updated ${captainUser.username} role to captain`);
+                }
+                
                 render();
                 alert(`${captainName} is now the captain of ${team.name}`);
             } catch (error) {
