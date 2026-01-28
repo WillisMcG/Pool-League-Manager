@@ -2950,12 +2950,14 @@
             // Players: view-only access to schedule, standings, history, their team
             // Captains: can submit scores, manage their team roster
             // Admins: full access
+            const canAccessHallOfFame = canAccessFeature('hallOfFame');
             const tabs = [
                 { id: 'schedule', label: '📅 Schedule' },
                 ...(!isPlayer ? [{ id: 'submit', label: '📝 Submit' }] : []),
                 { id: 'standings', label: '🏆 Standings' },
                 { id: 'players', label: '👤 Players' },
                 { id: 'history', label: '📜 History' },
+                ...(canAccessHallOfFame ? [{ id: 'halloffame', label: '🏅 Hall of Fame' }] : []),
                 { id: 'teams', label: '🏠 Teams' },
                 ...(!isPlayer ? [{ id: 'users', label: '👥 Users' }] : []),
                 ...(isAdmin ? [{ id: 'admin', label: '🛡️ Admin' }, { id: 'settings', label: '⚙️ Settings' }] : [])
@@ -5118,6 +5120,613 @@
             `;
         }
 
+        function renderHallOfFame() {
+            // Calculate all-time and season records
+            const allTimeTeamStats = calculateAllTimeTeamStats();
+            const allTimePlayerStats = calculateAllTimePlayerStats();
+            const seasonChampions = getSeasonChampions();
+            const currentSeasonTeamStats = calculateSeasonTeamStats(state.currentSeason);
+            const currentSeasonPlayerStats = calculateSeasonPlayerStats(state.currentSeason);
+            
+            // Get top records
+            const topTeamsByWins = [...allTimeTeamStats].sort((a, b) => b.totalWins - a.totalWins).slice(0, 10);
+            const topTeamsByWinPct = [...allTimeTeamStats].filter(t => t.totalMatches >= 5).sort((a, b) => b.winPct - a.winPct).slice(0, 10);
+            const topTeamsByStreak = [...allTimeTeamStats].sort((a, b) => b.longestWinStreak - a.longestWinStreak).slice(0, 10);
+            const topTeamsByGames = [...allTimeTeamStats].sort((a, b) => b.totalGamesWon - a.totalGamesWon).slice(0, 10);
+            
+            const topPlayersByWins = [...allTimePlayerStats].sort((a, b) => b.totalWins - a.totalWins).slice(0, 10);
+            const topPlayersByWinPct = [...allTimePlayerStats].filter(p => p.totalMatches >= 10).sort((a, b) => b.winPct - a.winPct).slice(0, 10);
+            const topPlayersByStreak = [...allTimePlayerStats].sort((a, b) => b.longestWinStreak - a.longestWinStreak).slice(0, 10);
+            const topPlayersByGames = [...allTimePlayerStats].sort((a, b) => b.totalGamesWon - a.totalGamesWon).slice(0, 10);
+            
+            // Current season leaders
+            const seasonTeamLeaders = [...currentSeasonTeamStats].sort((a, b) => b.wins - a.wins).slice(0, 5);
+            const seasonPlayerLeaders = [...currentSeasonPlayerStats].sort((a, b) => b.wins - a.wins).slice(0, 5);
+
+            return \`
+                <div class="space-y-6">
+                    <div class="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 text-white rounded-xl shadow-lg p-6">
+                        <h2 class="text-3xl font-black">🏅 Hall of Fame</h2>
+                        <p class="mt-2 opacity-90">League records and achievements</p>
+                    </div>
+
+                    <!-- Season Champions -->
+                    \${seasonChampions.length > 0 ? \`
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">🏆 Season Champions</h3>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            \${seasonChampions.map(champ => \`
+                                <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-lg p-4 text-center">
+                                    <div class="text-3xl mb-2">🏆</div>
+                                    <div class="font-bold text-lg text-amber-800">\${champ.teamName}</div>
+                                    <div class="text-sm text-amber-600">\${champ.seasonName}</div>
+                                    <div class="text-xs text-slate-500 mt-1">\${champ.record}</div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                    </div>
+                    \` : ''}
+
+                    <!-- Current Season Leaders -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">📊 Current Season Leaders</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-bold text-emerald-700 mb-2">Team Standings</h4>
+                                \${seasonTeamLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : \`
+                                <div class="space-y-2">
+                                    \${seasonTeamLeaders.map((t, i) => \`
+                                        <div class="flex items-center gap-3 p-2 rounded \${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
+                                            <span class="font-bold text-lg w-6 \${i === 0 ? 'text-amber-600' : 'text-slate-400'}">\${i + 1}</span>
+                                            <span class="flex-1 font-semibold">\${t.name}</span>
+                                            <span class="text-sm">\${t.wins}W-\${t.losses}L</span>
+                                            <span class="text-sm font-bold text-emerald-600">\${t.winPct.toFixed(1)}%</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-emerald-700 mb-2">Top Players</h4>
+                                \${seasonPlayerLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : \`
+                                <div class="space-y-2">
+                                    \${seasonPlayerLeaders.map((p, i) => \`
+                                        <div class="flex items-center gap-3 p-2 rounded \${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
+                                            <span class="font-bold text-lg w-6 \${i === 0 ? 'text-amber-600' : 'text-slate-400'}">\${i + 1}</span>
+                                            <div class="flex-1">
+                                                <span class="font-semibold">\${p.name}</span>
+                                                <span class="text-xs text-slate-500 ml-1">(\${p.team})</span>
+                                            </div>
+                                            <span class="text-sm">\${p.wins}W-\${p.losses}L</span>
+                                            <span class="text-sm font-bold text-emerald-600">\${p.winPct.toFixed(1)}%</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All-Time Team Records -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">🏠 All-Time Team Records</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <!-- Most Match Wins -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-purple-700 mb-3 flex items-center gap-2">🥇 Most Match Wins (Lifetime)</h4>
+                                \${topTeamsByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topTeamsByWins.map((t, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${t.name}</span>
+                                            <span class="font-bold text-purple-600">\${t.totalWins}</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Best Win Percentage -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-blue-700 mb-3 flex items-center gap-2">📈 Best Win % (Min 5 matches)</h4>
+                                \${topTeamsByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topTeamsByWinPct.map((t, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${t.name}</span>
+                                            <span class="font-bold text-blue-600">\${t.winPct.toFixed(1)}%</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Longest Win Streak -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-red-700 mb-3 flex items-center gap-2">🔥 Longest Win Streak</h4>
+                                \${topTeamsByStreak.filter(t => t.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topTeamsByStreak.filter(t => t.longestWinStreak > 0).map((t, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${t.name}</span>
+                                            <span class="font-bold text-red-600">\${t.longestWinStreak} wins</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Most Games Won -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-emerald-700 mb-3 flex items-center gap-2">🎱 Most Games Won (Lifetime)</h4>
+                                \${topTeamsByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topTeamsByGames.map((t, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${t.name}</span>
+                                            <span class="font-bold text-emerald-600">\${t.totalGamesWon}</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All-Time Player Records -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">👤 All-Time Player Records</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <!-- Most Match Wins -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-purple-700 mb-3 flex items-center gap-2">🥇 Most Match Wins (Lifetime)</h4>
+                                \${topPlayersByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topPlayersByWins.map((p, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
+                                            <span class="font-bold text-purple-600">\${p.totalWins}</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Best Win Percentage -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-blue-700 mb-3 flex items-center gap-2">📈 Best Win % (Min 10 matches)</h4>
+                                \${topPlayersByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topPlayersByWinPct.map((p, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
+                                            <span class="font-bold text-blue-600">\${p.winPct.toFixed(1)}%</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Longest Win Streak -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-red-700 mb-3 flex items-center gap-2">🔥 Longest Win Streak</h4>
+                                \${topPlayersByStreak.filter(p => p.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topPlayersByStreak.filter(p => p.longestWinStreak > 0).map((p, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
+                                            <span class="font-bold text-red-600">\${p.longestWinStreak} wins</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                            
+                            <!-- Most Games Won -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-bold text-emerald-700 mb-3 flex items-center gap-2">🎱 Most Games Won (Lifetime)</h4>
+                                \${topPlayersByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <div class="space-y-1">
+                                    \${topPlayersByGames.map((p, i) => \`
+                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
+                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
+                                            <span class="font-bold text-emerald-600">\${p.totalGamesWon}</span>
+                                        </div>
+                                    \`).join('')}
+                                </div>
+                                \`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Season Records Summary -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">📅 Single Season Records</h3>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            \${getSingleSeasonRecords().map(record => \`
+                                <div class="border rounded-lg p-4 text-center">
+                                    <div class="text-2xl mb-1">\${record.icon}</div>
+                                    <div class="text-xs text-slate-500 uppercase tracking-wide">\${record.label}</div>
+                                    <div class="font-bold text-lg text-slate-800 mt-1">\${record.value}</div>
+                                    <div class="text-sm text-emerald-600 font-semibold">\${record.holder}</div>
+                                    <div class="text-xs text-slate-400">\${record.season}</div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                    </div>
+                </div>
+            \`;
+        }
+
+        // Hall of Fame helper functions
+        function calculateAllTimeTeamStats() {
+            const teamStats = {};
+            
+            // Initialize all teams
+            state.teams.forEach(team => {
+                teamStats[team.id] = {
+                    id: team.id,
+                    name: team.name,
+                    totalWins: 0,
+                    totalLosses: 0,
+                    totalMatches: 0,
+                    totalGamesWon: 0,
+                    totalGamesLost: 0,
+                    winPct: 0,
+                    longestWinStreak: 0,
+                    currentStreak: 0,
+                    matchHistory: []
+                };
+            });
+            
+            // Get all matches sorted by date
+            const allMatches = [...state.matches].sort((a, b) => {
+                const schedA = state.schedule.find(s => s.id === a.scheduleId);
+                const schedB = state.schedule.find(s => s.id === b.scheduleId);
+                return new Date(schedA?.date || 0) - new Date(schedB?.date || 0);
+            });
+            
+            // Process each match
+            allMatches.forEach(match => {
+                const sched = state.schedule.find(s => s.id === match.scheduleId);
+                if (!sched || sched.isBye) return;
+                
+                const homeId = sched.homeTeamId;
+                const awayId = sched.awayTeamId;
+                
+                if (!teamStats[homeId] || !teamStats[awayId]) return;
+                
+                const homeWon = match.homeScore > match.awayScore;
+                
+                // Home team stats
+                teamStats[homeId].totalMatches++;
+                teamStats[homeId].totalGamesWon += match.homeScore;
+                teamStats[homeId].totalGamesLost += match.awayScore;
+                if (homeWon) {
+                    teamStats[homeId].totalWins++;
+                    teamStats[homeId].currentStreak++;
+                    teamStats[homeId].longestWinStreak = Math.max(teamStats[homeId].longestWinStreak, teamStats[homeId].currentStreak);
+                } else {
+                    teamStats[homeId].totalLosses++;
+                    teamStats[homeId].currentStreak = 0;
+                }
+                teamStats[homeId].matchHistory.push({ date: sched.date, won: homeWon });
+                
+                // Away team stats
+                teamStats[awayId].totalMatches++;
+                teamStats[awayId].totalGamesWon += match.awayScore;
+                teamStats[awayId].totalGamesLost += match.homeScore;
+                if (!homeWon) {
+                    teamStats[awayId].totalWins++;
+                    teamStats[awayId].currentStreak++;
+                    teamStats[awayId].longestWinStreak = Math.max(teamStats[awayId].longestWinStreak, teamStats[awayId].currentStreak);
+                } else {
+                    teamStats[awayId].totalLosses++;
+                    teamStats[awayId].currentStreak = 0;
+                }
+                teamStats[awayId].matchHistory.push({ date: sched.date, won: !homeWon });
+            });
+            
+            // Calculate win percentages
+            Object.values(teamStats).forEach(team => {
+                team.winPct = team.totalMatches > 0 ? (team.totalWins / team.totalMatches) * 100 : 0;
+            });
+            
+            return Object.values(teamStats);
+        }
+
+        function calculateAllTimePlayerStats() {
+            const playerStats = {};
+            
+            // Initialize all players
+            state.teams.forEach(team => {
+                team.players.forEach(player => {
+                    playerStats[player.id] = {
+                        id: player.id,
+                        name: player.name,
+                        team: team.name,
+                        totalWins: 0,
+                        totalLosses: 0,
+                        totalMatches: 0,
+                        totalGamesWon: 0,
+                        totalGamesLost: 0,
+                        winPct: 0,
+                        longestWinStreak: 0,
+                        currentStreak: 0,
+                        matchHistory: []
+                    };
+                });
+            });
+            
+            // Get all matches sorted by date
+            const allMatches = [...state.matches].sort((a, b) => {
+                const schedA = state.schedule.find(s => s.id === a.scheduleId);
+                const schedB = state.schedule.find(s => s.id === b.scheduleId);
+                return new Date(schedA?.date || 0) - new Date(schedB?.date || 0);
+            });
+            
+            // Process each match's individual games
+            allMatches.forEach(match => {
+                const sched = state.schedule.find(s => s.id === match.scheduleId);
+                if (!sched) return;
+                
+                (match.matchups || []).forEach(mu => {
+                    const homeGames = parseInt(mu.homeGames) || 0;
+                    const awayGames = parseInt(mu.awayGames) || 0;
+                    const homeWon = homeGames > awayGames;
+                    
+                    // Home player
+                    if (playerStats[mu.homePlayer]) {
+                        playerStats[mu.homePlayer].totalMatches++;
+                        playerStats[mu.homePlayer].totalGamesWon += homeGames;
+                        playerStats[mu.homePlayer].totalGamesLost += awayGames;
+                        if (homeWon) {
+                            playerStats[mu.homePlayer].totalWins++;
+                            playerStats[mu.homePlayer].currentStreak++;
+                            playerStats[mu.homePlayer].longestWinStreak = Math.max(
+                                playerStats[mu.homePlayer].longestWinStreak, 
+                                playerStats[mu.homePlayer].currentStreak
+                            );
+                        } else {
+                            playerStats[mu.homePlayer].totalLosses++;
+                            playerStats[mu.homePlayer].currentStreak = 0;
+                        }
+                    }
+                    
+                    // Away player
+                    if (playerStats[mu.awayPlayer]) {
+                        playerStats[mu.awayPlayer].totalMatches++;
+                        playerStats[mu.awayPlayer].totalGamesWon += awayGames;
+                        playerStats[mu.awayPlayer].totalGamesLost += homeGames;
+                        if (!homeWon) {
+                            playerStats[mu.awayPlayer].totalWins++;
+                            playerStats[mu.awayPlayer].currentStreak++;
+                            playerStats[mu.awayPlayer].longestWinStreak = Math.max(
+                                playerStats[mu.awayPlayer].longestWinStreak, 
+                                playerStats[mu.awayPlayer].currentStreak
+                            );
+                        } else {
+                            playerStats[mu.awayPlayer].totalLosses++;
+                            playerStats[mu.awayPlayer].currentStreak = 0;
+                        }
+                    }
+                });
+            });
+            
+            // Calculate win percentages
+            Object.values(playerStats).forEach(player => {
+                player.winPct = player.totalMatches > 0 ? (player.totalWins / player.totalMatches) * 100 : 0;
+            });
+            
+            return Object.values(playerStats);
+        }
+
+        function calculateSeasonTeamStats(seasonId) {
+            const teamStats = {};
+            
+            state.teams.forEach(team => {
+                teamStats[team.id] = {
+                    id: team.id,
+                    name: team.name,
+                    wins: 0,
+                    losses: 0,
+                    gamesWon: 0,
+                    gamesLost: 0,
+                    winPct: 0
+                };
+            });
+            
+            // Filter schedule for current season
+            const seasonSchedule = state.schedule.filter(s => s.seasonId === seasonId || !seasonId);
+            const seasonMatches = state.matches.filter(m => 
+                seasonSchedule.some(s => s.id === m.scheduleId)
+            );
+            
+            seasonMatches.forEach(match => {
+                const sched = seasonSchedule.find(s => s.id === match.scheduleId);
+                if (!sched || sched.isBye) return;
+                
+                const homeId = sched.homeTeamId;
+                const awayId = sched.awayTeamId;
+                
+                if (!teamStats[homeId] || !teamStats[awayId]) return;
+                
+                teamStats[homeId].gamesWon += match.homeScore;
+                teamStats[homeId].gamesLost += match.awayScore;
+                teamStats[awayId].gamesWon += match.awayScore;
+                teamStats[awayId].gamesLost += match.homeScore;
+                
+                if (match.homeScore > match.awayScore) {
+                    teamStats[homeId].wins++;
+                    teamStats[awayId].losses++;
+                } else {
+                    teamStats[awayId].wins++;
+                    teamStats[homeId].losses++;
+                }
+            });
+            
+            Object.values(teamStats).forEach(team => {
+                const total = team.wins + team.losses;
+                team.winPct = total > 0 ? (team.wins / total) * 100 : 0;
+            });
+            
+            return Object.values(teamStats).filter(t => t.wins + t.losses > 0);
+        }
+
+        function calculateSeasonPlayerStats(seasonId) {
+            const playerStats = {};
+            
+            state.teams.forEach(team => {
+                team.players.forEach(player => {
+                    playerStats[player.id] = {
+                        id: player.id,
+                        name: player.name,
+                        team: team.name,
+                        wins: 0,
+                        losses: 0,
+                        gamesWon: 0,
+                        gamesLost: 0,
+                        winPct: 0
+                    };
+                });
+            });
+            
+            const seasonSchedule = state.schedule.filter(s => s.seasonId === seasonId || !seasonId);
+            const seasonMatches = state.matches.filter(m => 
+                seasonSchedule.some(s => s.id === m.scheduleId)
+            );
+            
+            seasonMatches.forEach(match => {
+                (match.matchups || []).forEach(mu => {
+                    const homeGames = parseInt(mu.homeGames) || 0;
+                    const awayGames = parseInt(mu.awayGames) || 0;
+                    const homeWon = homeGames > awayGames;
+                    
+                    if (playerStats[mu.homePlayer]) {
+                        playerStats[mu.homePlayer].gamesWon += homeGames;
+                        playerStats[mu.homePlayer].gamesLost += awayGames;
+                        if (homeWon) playerStats[mu.homePlayer].wins++;
+                        else playerStats[mu.homePlayer].losses++;
+                    }
+                    
+                    if (playerStats[mu.awayPlayer]) {
+                        playerStats[mu.awayPlayer].gamesWon += awayGames;
+                        playerStats[mu.awayPlayer].gamesLost += homeGames;
+                        if (!homeWon) playerStats[mu.awayPlayer].wins++;
+                        else playerStats[mu.awayPlayer].losses++;
+                    }
+                });
+            });
+            
+            Object.values(playerStats).forEach(player => {
+                const total = player.wins + player.losses;
+                player.winPct = total > 0 ? (player.wins / total) * 100 : 0;
+            });
+            
+            return Object.values(playerStats).filter(p => p.wins + p.losses > 0);
+        }
+
+        function getSeasonChampions() {
+            const champions = [];
+            
+            // Get completed seasons (excluding current)
+            const completedSeasons = (state.seasons || []).filter(s => s.id !== state.currentSeason);
+            
+            completedSeasons.forEach(season => {
+                const seasonSchedule = state.schedule.filter(s => s.seasonId === season.id);
+                const seasonMatches = state.matches.filter(m => 
+                    seasonSchedule.some(s => s.id === m.scheduleId)
+                );
+                
+                if (seasonMatches.length === 0) return;
+                
+                // Calculate standings for this season
+                const standings = {};
+                state.teams.forEach(team => {
+                    standings[team.id] = { id: team.id, name: team.name, wins: 0, losses: 0 };
+                });
+                
+                seasonMatches.forEach(match => {
+                    const sched = seasonSchedule.find(s => s.id === match.scheduleId);
+                    if (!sched || sched.isBye) return;
+                    
+                    if (standings[sched.homeTeamId] && standings[sched.awayTeamId]) {
+                        if (match.homeScore > match.awayScore) {
+                            standings[sched.homeTeamId].wins++;
+                            standings[sched.awayTeamId].losses++;
+                        } else {
+                            standings[sched.awayTeamId].wins++;
+                            standings[sched.homeTeamId].losses++;
+                        }
+                    }
+                });
+                
+                const sorted = Object.values(standings)
+                    .filter(t => t.wins + t.losses > 0)
+                    .sort((a, b) => b.wins - a.wins);
+                
+                if (sorted.length > 0) {
+                    champions.push({
+                        seasonId: season.id,
+                        seasonName: season.name,
+                        teamId: sorted[0].id,
+                        teamName: sorted[0].name,
+                        record: sorted[0].wins + 'W - ' + sorted[0].losses + 'L'
+                    });
+                }
+            });
+            
+            return champions.reverse(); // Most recent first
+        }
+
+        function getSingleSeasonRecords() {
+            const records = [];
+            
+            // Track best single-season performances
+            let bestTeamWins = { value: 0, holder: '-', season: '-' };
+            let bestTeamWinPct = { value: 0, holder: '-', season: '-' };
+            let bestPlayerWins = { value: 0, holder: '-', season: '-' };
+            let bestPlayerWinPct = { value: 0, holder: '-', season: '-' };
+            
+            (state.seasons || []).forEach(season => {
+                const teamStats = calculateSeasonTeamStats(season.id);
+                const playerStats = calculateSeasonPlayerStats(season.id);
+                
+                teamStats.forEach(t => {
+                    if (t.wins > bestTeamWins.value) {
+                        bestTeamWins = { value: t.wins, holder: t.name, season: season.name };
+                    }
+                    if (t.wins + t.losses >= 5 && t.winPct > bestTeamWinPct.value) {
+                        bestTeamWinPct = { value: t.winPct, holder: t.name, season: season.name };
+                    }
+                });
+                
+                playerStats.forEach(p => {
+                    if (p.wins > bestPlayerWins.value) {
+                        bestPlayerWins = { value: p.wins, holder: p.name, season: season.name };
+                    }
+                    if (p.wins + p.losses >= 10 && p.winPct > bestPlayerWinPct.value) {
+                        bestPlayerWinPct = { value: p.winPct, holder: p.name, season: season.name };
+                    }
+                });
+            });
+            
+            records.push({ icon: '🏠', label: 'Team Wins (Season)', value: bestTeamWins.value || '-', holder: bestTeamWins.holder, season: bestTeamWins.season });
+            records.push({ icon: '📊', label: 'Team Win % (Season)', value: bestTeamWinPct.value ? bestTeamWinPct.value.toFixed(1) + '%' : '-', holder: bestTeamWinPct.holder, season: bestTeamWinPct.season });
+            records.push({ icon: '👤', label: 'Player Wins (Season)', value: bestPlayerWins.value || '-', holder: bestPlayerWins.holder, season: bestPlayerWins.season });
+            records.push({ icon: '🎯', label: 'Player Win % (Season)', value: bestPlayerWinPct.value ? bestPlayerWinPct.value.toFixed(1) + '%' : '-', holder: bestPlayerWinPct.holder, season: bestPlayerWinPct.season });
+            
+            return records;
+        }
+
         function renderTeams() {
             const isAdmin = state.currentUser.role === 'admin';
             const isCaptain = state.currentUser.role === 'captain';
@@ -6160,7 +6769,7 @@
             if (!window.state.currentUser) {
                 app.innerHTML = renderLoginScreen();
             } else {
-                const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
+                const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, halloffame: renderHallOfFame, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
                 app.innerHTML = `
                     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
                         ${renderHeader()}
