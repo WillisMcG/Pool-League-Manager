@@ -2813,21 +2813,50 @@
             const seasonId = state.currentSeason?.id;
             const isAdmin = state.currentUser?.role === 'admin';
             const raceTo = state.currentSeason?.raceTo || 2;
+            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
 
             // Admin only needs match selected, captains need both match and team
             if (!sel) { alert('Select a match'); return; }
             if (!isAdmin && !team) { alert('Select your team'); return; }
             if (!seasonId) { alert('No season selected'); return; }
+            
+            // Ensure we have the right number of games
+            if (matchups.length !== gamesPerMatch) {
+                alert(`Expected ${gamesPerMatch} games but found ${matchups.length}. Please refresh and try again.`);
+                return;
+            }
 
+            // Validate each game is complete
             for (let i = 0; i < matchups.length; i++) {
                 const m = matchups[i];
-                const hg = parseInt(m.homeGames) || 0;
-                const ag = parseInt(m.awayGames) || 0;
-                if (!m.homePlayer || !m.awayPlayer) { alert(`Game ${i + 1}: Select both players`); return; }
+                
+                // Check players are selected
+                if (!m.homePlayer) { 
+                    alert(`Game ${i + 1}: Select the home team player`); 
+                    return; 
+                }
+                if (!m.awayPlayer) { 
+                    alert(`Game ${i + 1}: Select the away team player`); 
+                    return; 
+                }
+                
+                // Check scores are selected (not empty string)
+                if (m.homeGames === '' || m.homeGames === null || m.homeGames === undefined) {
+                    alert(`Game ${i + 1}: Select games won for home player`);
+                    return;
+                }
+                if (m.awayGames === '' || m.awayGames === null || m.awayGames === undefined) {
+                    alert(`Game ${i + 1}: Select games won for away player`);
+                    return;
+                }
+                
+                const hg = parseInt(m.homeGames);
+                const ag = parseInt(m.awayGames);
+                
                 // Validate: exactly one player must reach raceTo, other must be less
                 const validScore = (hg === raceTo && ag < raceTo) || (ag === raceTo && hg < raceTo);
                 if (!validScore) {
-                    alert(`Game ${i + 1}: One player must win ${raceTo}, other must have less than ${raceTo}`); 
+                    alert(`Game ${i + 1}: Invalid score (${hg}-${ag}). One player must win ${raceTo}, other must have less than ${raceTo}.`); 
                     return;
                 }
             }
