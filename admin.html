@@ -280,9 +280,44 @@
             <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-4xl mx-4 my-8">
                 <div class="flex justify-between items-start mb-6">
                     <h2 class="text-2xl font-bold">🏢 Organization Details</h2>
-                    <button onclick="closeOrgModal()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="closeOrgModal(); confirmDeleteOrg(currentViewOrgId)" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm">
+                            🗑️ Delete Org
+                        </button>
+                        <button onclick="closeOrgModal()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+                    </div>
                 </div>
                 <div id="org-details-content">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Delete Organization Confirmation Modal -->
+        <div id="delete-org-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4">
+                <div class="text-center mb-6">
+                    <div class="text-5xl mb-4">⚠️</div>
+                    <h2 class="text-2xl font-bold text-red-600">Delete Organization</h2>
+                    <p class="text-slate-600 mt-2">This action cannot be undone!</p>
+                </div>
+                <div id="delete-org-info" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6"></div>
+                <div class="bg-slate-50 rounded-lg p-4 mb-6">
+                    <p class="font-semibold text-slate-700 mb-2">The following will be permanently deleted:</p>
+                    <ul id="delete-summary" class="text-sm text-slate-600 space-y-1"></ul>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-red-700">Type the organization name to confirm:</label>
+                        <input type="text" id="delete-confirm-name" placeholder="Organization name" 
+                            class="w-full px-4 py-3 border-2 border-red-300 rounded-lg focus:border-red-500 focus:outline-none">
+                    </div>
+                    <button onclick="executeDeleteOrg()" id="delete-org-btn" disabled
+                        class="w-full py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
+                        🗑️ Permanently Delete Organization
+                    </button>
+                    <button onclick="closeDeleteOrgModal()" class="w-full py-2 text-slate-600 hover:text-slate-800">
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -589,9 +624,12 @@
                             <td class="px-4 py-3 text-center text-sm">${org.subscription_tier || '-'}</td>
                             <td class="px-4 py-3 text-center font-semibold">${userCount}</td>
                             <td class="px-4 py-3 text-center text-sm text-slate-500">${formatDate(org.created_at)}</td>
-                            <td class="px-4 py-3 text-center">
+                            <td class="px-4 py-3 text-center space-x-2">
                                 <button onclick="viewOrgDetails('${org.id}')" class="text-purple-600 hover:text-purple-800 font-medium text-sm">
-                                    View Details
+                                    View
+                                </button>
+                                <button onclick="confirmDeleteOrg('${org.id}')" class="text-red-600 hover:text-red-800 font-medium text-sm">
+                                    Delete
                                 </button>
                             </td>
                         </tr>
@@ -709,7 +747,10 @@
         // ============================================
         // ORG DETAILS
         // ============================================
+        let currentViewOrgId = null;
+        
         async function viewOrgDetails(orgId) {
+            currentViewOrgId = orgId;
             const org = allOrgs.find(o => o.id === orgId);
             const orgUsers = allUsers.filter(u => u.org_id === orgId);
             
@@ -799,6 +840,225 @@
 
         function closeOrgModal() {
             document.getElementById('org-modal').classList.add('hidden');
+            currentViewOrgId = null;
+        }
+
+        // ============================================
+        // DELETE ORGANIZATION
+        // ============================================
+        let deleteOrgId = null;
+        let deleteOrgName = null;
+        let deleteOrgData = null;
+
+        async function confirmDeleteOrg(orgId) {
+            deleteOrgId = orgId;
+            const org = allOrgs.find(o => o.id === orgId);
+            deleteOrgName = org?.name || '';
+            
+            // Show loading state
+            document.getElementById('delete-org-info').innerHTML = `<div class="text-center">Loading organization data...</div>`;
+            document.getElementById('delete-summary').innerHTML = '<li>Calculating...</li>';
+            document.getElementById('delete-org-modal').classList.remove('hidden');
+            document.getElementById('delete-confirm-name').value = '';
+            document.getElementById('delete-org-btn').disabled = true;
+            
+            // Gather all related data counts
+            deleteOrgData = await gatherOrgData(orgId);
+            
+            // Display org info
+            document.getElementById('delete-org-info').innerHTML = `
+                <div class="font-bold text-lg text-red-800">${org?.name || 'Unknown'}</div>
+                <div class="text-sm text-red-700">Slug: ${org?.slug || '-'}</div>
+                <div class="text-sm text-red-700">Status: ${org?.subscription_status || '-'}</div>
+            `;
+            
+            // Display deletion summary
+            const summaryItems = [];
+            summaryItems.push(`<li>• <strong>${deleteOrgData.users}</strong> user(s)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.teams}</strong> team(s)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.players}</strong> player(s)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.seasons}</strong> season(s)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.schedules}</strong> scheduled match(es)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.matches}</strong> completed match(es)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.submissions}</strong> score submission(s)</li>`);
+            summaryItems.push(`<li>• <strong>${deleteOrgData.venues}</strong> venue(s)</li>`);
+            summaryItems.push(`<li class="pt-2 font-semibold text-red-700">• 1 organization record</li>`);
+            
+            document.getElementById('delete-summary').innerHTML = summaryItems.join('');
+            
+            // Enable delete button when name matches
+            document.getElementById('delete-confirm-name').oninput = function() {
+                const matches = this.value.trim().toLowerCase() === deleteOrgName.toLowerCase();
+                document.getElementById('delete-org-btn').disabled = !matches;
+            };
+        }
+
+        async function gatherOrgData(orgId) {
+            const data = {
+                users: 0,
+                teams: 0,
+                players: 0,
+                seasons: 0,
+                schedules: 0,
+                matches: 0,
+                submissions: 0,
+                venues: 0,
+                teamIds: [],
+                seasonIds: [],
+                scheduleIds: []
+            };
+            
+            try {
+                // Get users count
+                const { data: users } = await db.from('users').select('id').eq('org_id', orgId);
+                data.users = users?.length || 0;
+                
+                // Get teams
+                const { data: teams } = await db.from('teams').select('id').eq('org_id', orgId);
+                data.teams = teams?.length || 0;
+                data.teamIds = teams?.map(t => t.id) || [];
+                
+                // Get players (via teams)
+                if (data.teamIds.length > 0) {
+                    const { data: players } = await db.from('players').select('id').in('team_id', data.teamIds);
+                    data.players = players?.length || 0;
+                }
+                
+                // Get seasons
+                const { data: seasons } = await db.from('seasons').select('id').eq('org_id', orgId);
+                data.seasons = seasons?.length || 0;
+                data.seasonIds = seasons?.map(s => s.id) || [];
+                
+                // Get schedules (via seasons)
+                if (data.seasonIds.length > 0) {
+                    const { data: schedules } = await db.from('schedule').select('id').in('season_id', data.seasonIds);
+                    data.schedules = schedules?.length || 0;
+                    data.scheduleIds = schedules?.map(s => s.id) || [];
+                }
+                
+                // Get matches (via schedules)
+                if (data.scheduleIds.length > 0) {
+                    const { data: matches } = await db.from('matches').select('id').in('schedule_id', data.scheduleIds);
+                    data.matches = matches?.length || 0;
+                }
+                
+                // Get submissions (via schedules)
+                if (data.scheduleIds.length > 0) {
+                    const { data: submissions } = await db.from('submissions').select('id').in('schedule_id', data.scheduleIds);
+                    data.submissions = submissions?.length || 0;
+                }
+                
+                // Get venues
+                const { data: venues } = await db.from('venues').select('id').eq('org_id', orgId);
+                data.venues = venues?.length || 0;
+                
+            } catch (err) {
+                console.error('Error gathering org data:', err);
+            }
+            
+            return data;
+        }
+
+        async function executeDeleteOrg() {
+            if (!deleteOrgId || !deleteOrgData) return;
+            
+            const confirmName = document.getElementById('delete-confirm-name').value.trim();
+            if (confirmName.toLowerCase() !== deleteOrgName.toLowerCase()) {
+                alert('Organization name does not match');
+                return;
+            }
+            
+            // Disable button and show progress
+            const btn = document.getElementById('delete-org-btn');
+            btn.disabled = true;
+            btn.innerHTML = '🔄 Deleting... Please wait';
+            
+            try {
+                console.log('Starting deletion for org:', deleteOrgId);
+                
+                // Delete in order: deepest children first, then work up to parent
+                
+                // 1. Delete match_games (if table exists) - via matches via schedules
+                if (deleteOrgData.scheduleIds.length > 0) {
+                    // First get match IDs
+                    const { data: matchesToDelete } = await db.from('matches').select('id').in('schedule_id', deleteOrgData.scheduleIds);
+                    const matchIds = matchesToDelete?.map(m => m.id) || [];
+                    
+                    if (matchIds.length > 0) {
+                        console.log('Deleting match_games for', matchIds.length, 'matches');
+                        await db.from('match_games').delete().in('match_id', matchIds);
+                    }
+                }
+                
+                // 2. Delete submissions (via schedules)
+                if (deleteOrgData.scheduleIds.length > 0) {
+                    console.log('Deleting submissions');
+                    await db.from('submissions').delete().in('schedule_id', deleteOrgData.scheduleIds);
+                }
+                
+                // 3. Delete matches (via schedules)
+                if (deleteOrgData.scheduleIds.length > 0) {
+                    console.log('Deleting matches');
+                    await db.from('matches').delete().in('schedule_id', deleteOrgData.scheduleIds);
+                }
+                
+                // 4. Delete schedules (via seasons)
+                if (deleteOrgData.seasonIds.length > 0) {
+                    console.log('Deleting schedules');
+                    await db.from('schedule').delete().in('season_id', deleteOrgData.seasonIds);
+                }
+                
+                // 5. Delete players (via teams)
+                if (deleteOrgData.teamIds.length > 0) {
+                    console.log('Deleting players');
+                    await db.from('players').delete().in('team_id', deleteOrgData.teamIds);
+                }
+                
+                // 6. Delete teams
+                console.log('Deleting teams');
+                await db.from('teams').delete().eq('org_id', deleteOrgId);
+                
+                // 7. Delete seasons
+                console.log('Deleting seasons');
+                await db.from('seasons').delete().eq('org_id', deleteOrgId);
+                
+                // 8. Delete venues
+                console.log('Deleting venues');
+                await db.from('venues').delete().eq('org_id', deleteOrgId);
+                
+                // 9. Delete users
+                console.log('Deleting users');
+                await db.from('users').delete().eq('org_id', deleteOrgId);
+                
+                // 10. Finally delete the organization
+                console.log('Deleting organization');
+                const { error: orgError } = await db.from('organizations').delete().eq('id', deleteOrgId);
+                
+                if (orgError) {
+                    throw orgError;
+                }
+                
+                console.log('Deletion complete!');
+                alert(`Organization "${deleteOrgName}" and all related data have been permanently deleted.`);
+                
+                closeDeleteOrgModal();
+                
+                // Refresh the data
+                await loadDashboard();
+                
+            } catch (err) {
+                console.error('Error deleting organization:', err);
+                alert('Error deleting organization: ' + (err.message || 'Unknown error') + '\n\nCheck console for details.');
+                btn.disabled = false;
+                btn.innerHTML = '🗑️ Permanently Delete Organization';
+            }
+        }
+
+        function closeDeleteOrgModal() {
+            document.getElementById('delete-org-modal').classList.add('hidden');
+            deleteOrgId = null;
+            deleteOrgName = null;
+            deleteOrgData = null;
         }
 
         // ============================================
