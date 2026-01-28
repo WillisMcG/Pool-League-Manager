@@ -3,452 +3,380 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upgrade Your Plan - Pool League Manager</title>
-    
+    <title>Pricing - Pool League Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://js.stripe.com/v3/"></script>
-    
-    <style>
-        .gradient-bg {
-            background: linear-gradient(135deg, #064e3b 0%, #0f766e 50%, #115e59 100%);
-        }
-        .plan-card {
-            transition: all 0.3s ease;
-        }
-        .plan-card:hover {
-            transform: translateY(-4px);
-        }
-        .plan-card.selected {
-            border-color: #059669;
-            box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
-        }
-    </style>
 </head>
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 min-h-screen">
+    
     <!-- Header -->
-    <header class="gradient-bg text-white py-6 px-4">
-        <div class="max-w-4xl mx-auto flex items-center justify-between">
-            <a href="app.html" class="flex items-center gap-2">
-                <span class="text-2xl">🎱</span>
-                <span class="text-xl font-bold">Pool League Manager</span>
+    <header class="bg-black/20 backdrop-blur-sm border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="app.html" class="text-2xl font-black text-white flex items-center gap-2">
+                🎱 Pool League Manager
             </a>
-            <a href="app.html" class="text-emerald-200 hover:text-white">← Back to App</a>
+            <a href="app.html" class="text-white/80 hover:text-white">← Back to App</a>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="max-w-4xl mx-auto px-4 py-12">
-        <!-- Trial Banner (shown if on trial) -->
-        <div id="trial-banner" class="hidden bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-8">
-            <div class="flex items-start gap-4">
-                <div class="text-3xl">⏰</div>
-                <div>
-                    <h2 class="font-bold text-yellow-800 text-lg">Your free trial <span id="trial-status"></span></h2>
-                    <p class="text-yellow-700 mt-1" id="trial-message"></p>
-                </div>
-            </div>
+    <!-- Pricing Section -->
+    <main class="max-w-6xl mx-auto px-4 py-12">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl md:text-5xl font-black text-white mb-4">Simple, Transparent Pricing</h1>
+            <p class="text-xl text-white/80">Choose the plan that fits your league</p>
         </div>
 
-        <!-- Current Plan Banner (shown if already subscribed) -->
-        <div id="subscribed-banner" class="hidden bg-emerald-50 border-2 border-emerald-300 rounded-xl p-6 mb-8">
-            <div class="flex items-start gap-4">
-                <div class="text-3xl">✅</div>
-                <div>
-                    <h2 class="font-bold text-emerald-800 text-lg">You're on the <span id="current-plan" class="capitalize"></span> plan</h2>
-                    <p class="text-emerald-700 mt-1">Your subscription is active. Thank you for supporting Pool League Manager!</p>
-                    <button onclick="manageBilling()" class="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700">
-                        Manage Billing →
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Not Logged In Banner -->
-        <div id="login-banner" class="hidden bg-slate-50 border-2 border-slate-300 rounded-xl p-6 mb-8 text-center">
-            <div class="text-4xl mb-4">🔒</div>
-            <h2 class="font-bold text-slate-800 text-lg">Please sign in to upgrade</h2>
-            <p class="text-slate-600 mt-1 mb-4">You need to be logged in to manage your subscription.</p>
-            <a href="app.html" class="inline-block px-6 py-3 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700">
-                Sign In →
-            </a>
-        </div>
-
-        <!-- Pricing Section -->
-        <div id="pricing-section" class="hidden">
-            <div class="text-center mb-8">
-                <h1 class="text-3xl font-black text-slate-800 mb-2">Choose Your Plan</h1>
-                <p class="text-slate-600">Unlock the full power of Pool League Manager</p>
-            </div>
-
-            <!-- Billing Toggle -->
-            <div class="flex justify-center mb-8">
-                <div class="bg-white rounded-full p-1 shadow-md inline-flex">
-                    <button id="btn-monthly" onclick="setBilling('monthly')" 
-                        class="px-6 py-2 rounded-full font-semibold transition-colors">
-                        Monthly
-                    </button>
-                    <button id="btn-annual" onclick="setBilling('annual')" 
-                        class="px-6 py-2 rounded-full font-semibold transition-colors">
-                        Annual <span class="text-emerald-600 text-sm">(Save 10%)</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Plan Cards -->
-            <div class="grid md:grid-cols-2 gap-6 mb-8">
-                <!-- Starter Plan -->
-                <div id="card-starter" onclick="selectPlan('starter')" 
-                    class="plan-card bg-white rounded-2xl p-8 border-2 border-slate-200 cursor-pointer">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 class="text-2xl font-bold text-slate-800">Starter</h3>
-                            <p class="text-slate-500">For small leagues</p>
-                        </div>
-                        <div id="starter-check" class="hidden w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="mb-6">
-                        <span id="starter-price" class="text-4xl font-black text-slate-800">$19</span>
-                        <span id="starter-interval" class="text-slate-500">/month</span>
-                    </div>
-                    <ul class="space-y-3 text-slate-600">
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Up to 12 teams
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Up to 100 players
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> 10 seasons of history
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Auto schedule generation
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Email support
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Pro Plan -->
-                <div id="card-pro" onclick="selectPlan('pro')" 
-                    class="plan-card bg-white rounded-2xl p-8 border-2 border-slate-200 cursor-pointer relative">
-                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                        <span class="bg-emerald-500 text-white px-3 py-1 rounded-full text-sm font-bold">RECOMMENDED</span>
-                    </div>
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 class="text-2xl font-bold text-slate-800">Pro</h3>
-                            <p class="text-slate-500">For growing leagues</p>
-                        </div>
-                        <div id="pro-check" class="hidden w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="mb-6">
-                        <span id="pro-price" class="text-4xl font-black text-slate-800">$39</span>
-                        <span id="pro-interval" class="text-slate-500">/month</span>
-                    </div>
-                    <ul class="space-y-3 text-slate-600">
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Up to 50 teams
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Up to 500 players
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> 50 seasons of history
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Everything in Starter
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <span class="text-emerald-500">✓</span> Priority support
-                        </li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Checkout Button -->
-            <div class="text-center">
-                <button id="checkout-btn" onclick="checkout()" disabled
-                    class="px-12 py-4 bg-emerald-600 text-white font-bold text-lg rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    Select a plan to continue
+        <!-- Billing Toggle -->
+        <div class="flex justify-center mb-10">
+            <div class="bg-white/10 backdrop-blur-sm rounded-full p-1 flex">
+                <button id="monthly-btn" onclick="setBilling('monthly')" class="px-6 py-2 rounded-full font-bold transition-all text-white bg-emerald-600">
+                    Monthly
                 </button>
-                <p class="text-slate-500 text-sm mt-4">
-                    🔒 Secure checkout powered by Stripe
-                </p>
+                <button id="annual-btn" onclick="setBilling('annual')" class="px-6 py-2 rounded-full font-bold transition-all text-white/70 hover:text-white">
+                    Annual <span class="text-emerald-400 text-sm">(Save 10%)</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Pricing Cards -->
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            
+            <!-- Basic -->
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div class="bg-slate-100 p-6 text-center">
+                    <h2 class="text-2xl font-black text-slate-800">Basic</h2>
+                    <p class="text-slate-600 mt-1">For small leagues</p>
+                </div>
+                <div class="p-6">
+                    <div class="text-center mb-6">
+                        <span class="text-5xl font-black text-slate-800">$<span id="basic-price">5</span></span>
+                        <span class="text-slate-600" id="basic-period">/month</span>
+                        <p class="text-sm text-slate-500 mt-1" id="basic-annual-note"></p>
+                    </div>
+                    
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Up to 10 teams</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Team standings (W/L record)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Top 5 player rankings</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Current season data</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Web form score entry</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Schedule management</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-slate-300 mt-0.5">✗</span>
+                            <span class="text-slate-400">Photo scoresheet upload</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-slate-300 mt-0.5">✗</span>
+                            <span class="text-slate-400">Historical seasons</span>
+                        </li>
+                    </ul>
+                    
+                    <button onclick="selectPlan('basic')" class="w-full py-3 bg-slate-200 text-slate-800 font-bold rounded-lg hover:bg-slate-300 transition-colors">
+                        Select Basic
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pro (Popular) -->
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden ring-4 ring-emerald-500 transform md:scale-105">
+                <div class="bg-emerald-600 p-6 text-center relative">
+                    <span class="absolute top-2 right-2 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded-full">
+                        MOST POPULAR
+                    </span>
+                    <h2 class="text-2xl font-black text-white">Pro</h2>
+                    <p class="text-emerald-100 mt-1">For growing leagues</p>
+                </div>
+                <div class="p-6">
+                    <div class="text-center mb-6">
+                        <span class="text-5xl font-black text-slate-800">$<span id="pro-price">10</span></span>
+                        <span class="text-slate-600" id="pro-period">/month</span>
+                        <p class="text-sm text-slate-500 mt-1" id="pro-annual-note"></p>
+                    </div>
+                    
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Up to 20 teams</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Full team stats (W/L + Games)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Top 20 player rankings</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Player match & game stats</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>3 years</strong> of history</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Photo scoresheet upload</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Schedule management</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-slate-300 mt-0.5">✗</span>
+                            <span class="text-slate-400">Hall of Fame</span>
+                        </li>
+                    </ul>
+                    
+                    <button onclick="selectPlan('pro')" class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors">
+                        Select Pro
+                    </button>
+                </div>
+            </div>
+
+            <!-- Premium -->
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div class="bg-gradient-to-r from-amber-500 to-orange-500 p-6 text-center">
+                    <h2 class="text-2xl font-black text-white">Premium</h2>
+                    <p class="text-amber-100 mt-1">For serious leagues</p>
+                </div>
+                <div class="p-6">
+                    <div class="text-center mb-6">
+                        <span class="text-5xl font-black text-slate-800">$<span id="premium-price">20</span></span>
+                        <span class="text-slate-600" id="premium-period">/month</span>
+                        <p class="text-sm text-slate-500 mt-1" id="premium-annual-note"></p>
+                    </div>
+                    
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Unlimited teams</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Complete team statistics</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>All player</strong> rankings</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Full player statistics</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>All-time</strong> history</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span>Photo scoresheet upload</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>🏆 Hall of Fame</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Head-to-head records</strong></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-500 mt-0.5">✓</span>
+                            <span><strong>Trends & analytics</strong></span>
+                        </li>
+                    </ul>
+                    
+                    <button onclick="selectPlan('premium')" class="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-lg hover:from-amber-600 hover:to-orange-600 transition-colors">
+                        Select Premium
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ Section -->
+        <div class="mt-16 max-w-3xl mx-auto">
+            <h2 class="text-2xl font-black text-white text-center mb-8">Frequently Asked Questions</h2>
+            
+            <div class="space-y-4">
+                <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                    <h3 class="font-bold text-white mb-2">Can I change plans later?</h3>
+                    <p class="text-white/70">Yes! You can upgrade anytime. To downgrade, you may need to reduce your team count to fit within the new plan's limits.</p>
+                </div>
+                
+                <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                    <h3 class="font-bold text-white mb-2">What happens to my data if I downgrade?</h3>
+                    <p class="text-white/70">Your data is never deleted. If you downgrade and later upgrade again, all your historical data will be accessible.</p>
+                </div>
+                
+                <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                    <h3 class="font-bold text-white mb-2">Is there a free trial?</h3>
+                    <p class="text-white/70">Yes! New accounts get a 14-day free trial with Pro features. No credit card required to start.</p>
+                </div>
+                
+                <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                    <h3 class="font-bold text-white mb-2">What payment methods do you accept?</h3>
+                    <p class="text-white/70">We accept all major credit cards through Stripe. Annual plans are billed once per year.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature Comparison Table -->
+        <div class="mt-16 max-w-4xl mx-auto">
+            <h2 class="text-2xl font-black text-white text-center mb-8">Feature Comparison</h2>
+            
+            <div class="bg-white rounded-xl overflow-hidden shadow-xl">
+                <table class="w-full">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-6 py-4 text-left font-bold text-slate-700">Feature</th>
+                            <th class="px-4 py-4 text-center font-bold text-slate-700">Basic</th>
+                            <th class="px-4 py-4 text-center font-bold text-emerald-700 bg-emerald-50">Pro</th>
+                            <th class="px-4 py-4 text-center font-bold text-amber-700">Premium</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Teams</td>
+                            <td class="px-4 py-4 text-center">10</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50">20</td>
+                            <td class="px-4 py-4 text-center">Unlimited</td>
+                        </tr>
+                        <tr class="bg-slate-50">
+                            <td class="px-6 py-4 font-medium">Team Standings</td>
+                            <td class="px-4 py-4 text-center">W/L Only</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50/50">W/L + Games</td>
+                            <td class="px-4 py-4 text-center">Full Stats</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Player Rankings</td>
+                            <td class="px-4 py-4 text-center">Top 5</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50">Top 20</td>
+                            <td class="px-4 py-4 text-center">All Players</td>
+                        </tr>
+                        <tr class="bg-slate-50">
+                            <td class="px-6 py-4 font-medium">Player Detail Stats</td>
+                            <td class="px-4 py-4 text-center text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50/50">Match & Games</td>
+                            <td class="px-4 py-4 text-center">Everything</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Season History</td>
+                            <td class="px-4 py-4 text-center">Current Only</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50">3 Years</td>
+                            <td class="px-4 py-4 text-center">All-Time</td>
+                        </tr>
+                        <tr class="bg-slate-50">
+                            <td class="px-6 py-4 font-medium">Photo Score Upload</td>
+                            <td class="px-4 py-4 text-center text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50/50 text-emerald-600">✓</td>
+                            <td class="px-4 py-4 text-center text-emerald-600">✓</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Head-to-Head Records</td>
+                            <td class="px-4 py-4 text-center text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50 text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center text-emerald-600">✓</td>
+                        </tr>
+                        <tr class="bg-slate-50">
+                            <td class="px-6 py-4 font-medium">Trends & Analytics</td>
+                            <td class="px-4 py-4 text-center text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50/50 text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center text-emerald-600">✓</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Hall of Fame</td>
+                            <td class="px-4 py-4 text-center text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center bg-emerald-50 text-slate-400">—</td>
+                            <td class="px-4 py-4 text-center text-emerald-600">✓</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </main>
 
     <!-- Footer -->
-    <footer class="text-center text-slate-500 text-sm py-8">
-        <p>Questions? Contact us at support@poolleaguemanager.com</p>
+    <footer class="mt-16 py-8 border-t border-white/10">
+        <div class="max-w-6xl mx-auto px-4 text-center text-white/60">
+            <p>© 2025 Pool League Manager. All rights reserved.</p>
+        </div>
     </footer>
 
     <script>
-        // ============================================
-        // CONFIGURATION
-        // ============================================
-        const SUPABASE_URL = 'https://hprdhlletatixqysqegi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcmRobGxldGF0aXhxeXNxZWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTU1NDMsImV4cCI6MjA4MzY3MTU0M30._wrv6ONjG3JRkpA1FDPFkKMSn0bi6vhMiR0UZB40IRk';
-        const STRIPE_PUBLISHABLE_KEY = 'pk_test_51SoTE2DEuvjooNQ2C04FBdpjw5Drt66KyhFwa2I2mm0ml9a9l3fb5oO5BBpaDOBzQNtxYy90DAFpgRFBXxMz1vuQ003ScT41Nj';
+        // Pricing configuration
+        const pricing = {
+            basic: { monthly: 5, annual: 54 },
+            pro: { monthly: 10, annual: 108 },
+            premium: { monthly: 20, annual: 216 }
+        };
         
-        // Stripe Price IDs
-        const PRICE_IDS = {
-            starter: {
-                monthly: 'price_1SoTI0DEuvjooNQ2Nonqm05j',
-                annual: 'price_1SoTIWDEuvjooNQ2ccqt3rDa'
-            },
-            pro: {
-                monthly: 'price_1SoTSEDEuvjooNQ22hx7yVb1',
-                annual: 'price_1SoTSeDEuvjooNQ28XV4iKDm'
-            }
-        };
-
-        const PRICES = {
-            starter: { monthly: 19, annual: 205 },
-            pro: { monthly: 39, annual: 421 }
-        };
-
-        // Initialize clients
-        const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
-
-        // State
-        let currentUser = null;
-        let currentOrg = null;
-        let selectedPlan = null;
-        let billingInterval = 'monthly';
-
-        // ============================================
-        // INITIALIZATION
-        // ============================================
-        async function init() {
-            // Check for logged in user
-            const session = localStorage.getItem('plm_session');
-            if (!session) {
-                showLoginBanner();
-                return;
-            }
-
-            try {
-                const { id } = JSON.parse(session);
-                
-                // Load user
-                const { data: userData, error: userError } = await db.from('users')
-                    .select('*')
-                    .eq('id', id)
-                    .single();
-                
-                if (userError || !userData) {
-                    showLoginBanner();
-                    return;
-                }
-                
-                currentUser = userData;
-
-                // Load organization
-                if (userData.org_id) {
-                    const { data: orgData, error: orgError } = await db.from('organizations')
-                        .select('*')
-                        .eq('id', userData.org_id)
-                        .single();
-                    
-                    if (orgData) {
-                        currentOrg = orgData;
-                        
-                        // Check subscription status
-                        if (orgData.subscription_status === 'active') {
-                            showSubscribedBanner(orgData.subscription_tier);
-                        } else if (orgData.subscription_status === 'trial') {
-                            showTrialBanner(orgData.trial_ends_at);
-                            showPricingSection();
-                        } else {
-                            // Expired or canceled
-                            showTrialBanner(orgData.trial_ends_at, true);
-                            showPricingSection();
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('Init error:', e);
-                showLoginBanner();
-            }
-        }
-
-        // ============================================
-        // UI FUNCTIONS
-        // ============================================
-        function showLoginBanner() {
-            document.getElementById('login-banner').classList.remove('hidden');
-        }
-
-        function showTrialBanner(trialEndsAt, expired = false) {
-            const banner = document.getElementById('trial-banner');
-            const status = document.getElementById('trial-status');
-            const message = document.getElementById('trial-message');
-            
-            const endDate = new Date(trialEndsAt);
-            const now = new Date();
-            const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
-            
-            if (expired || daysLeft <= 0) {
-                status.textContent = 'has expired';
-                message.textContent = 'Upgrade now to continue using Pool League Manager.';
-                banner.classList.remove('bg-yellow-50', 'border-yellow-300');
-                banner.classList.add('bg-red-50', 'border-red-300');
-                status.classList.add('text-red-800');
-            } else if (daysLeft <= 3) {
-                status.textContent = `expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
-                message.textContent = 'Upgrade now to avoid any interruption to your service.';
-            } else {
-                status.textContent = `has ${daysLeft} days remaining`;
-                message.textContent = 'Upgrade anytime to unlock your full potential.';
-            }
-            
-            banner.classList.remove('hidden');
-        }
-
-        function showSubscribedBanner(tier) {
-            document.getElementById('current-plan').textContent = tier;
-            document.getElementById('subscribed-banner').classList.remove('hidden');
-            // Still show pricing section for upgrades/downgrades
-            document.getElementById('pricing-section').classList.remove('hidden');
-        }
-
-        function showPricingSection() {
-            document.getElementById('pricing-section').classList.remove('hidden');
-            setBilling('monthly');
-        }
-
-        function setBilling(interval) {
-            billingInterval = interval;
+        let billingPeriod = 'monthly';
+        
+        function setBilling(period) {
+            billingPeriod = period;
             
             // Update toggle buttons
-            const btnMonthly = document.getElementById('btn-monthly');
-            const btnAnnual = document.getElementById('btn-annual');
-            
-            if (interval === 'monthly') {
-                btnMonthly.classList.add('bg-emerald-600', 'text-white');
-                btnMonthly.classList.remove('text-slate-600');
-                btnAnnual.classList.remove('bg-emerald-600', 'text-white');
-                btnAnnual.classList.add('text-slate-600');
-            } else {
-                btnAnnual.classList.add('bg-emerald-600', 'text-white');
-                btnAnnual.classList.remove('text-slate-600');
-                btnMonthly.classList.remove('bg-emerald-600', 'text-white');
-                btnMonthly.classList.add('text-slate-600');
-            }
+            document.getElementById('monthly-btn').className = period === 'monthly' 
+                ? 'px-6 py-2 rounded-full font-bold transition-all text-white bg-emerald-600'
+                : 'px-6 py-2 rounded-full font-bold transition-all text-white/70 hover:text-white';
+            document.getElementById('annual-btn').className = period === 'annual'
+                ? 'px-6 py-2 rounded-full font-bold transition-all text-white bg-emerald-600'
+                : 'px-6 py-2 rounded-full font-bold transition-all text-white/70 hover:text-white';
             
             // Update prices
-            document.getElementById('starter-price').textContent = '$' + PRICES.starter[interval];
-            document.getElementById('starter-interval').textContent = interval === 'monthly' ? '/month' : '/year';
-            document.getElementById('pro-price').textContent = '$' + PRICES.pro[interval];
-            document.getElementById('pro-interval').textContent = interval === 'monthly' ? '/month' : '/year';
-            
-            updateCheckoutButton();
+            if (period === 'monthly') {
+                document.getElementById('basic-price').textContent = '5';
+                document.getElementById('basic-period').textContent = '/month';
+                document.getElementById('basic-annual-note').textContent = '';
+                
+                document.getElementById('pro-price').textContent = '10';
+                document.getElementById('pro-period').textContent = '/month';
+                document.getElementById('pro-annual-note').textContent = '';
+                
+                document.getElementById('premium-price').textContent = '20';
+                document.getElementById('premium-period').textContent = '/month';
+                document.getElementById('premium-annual-note').textContent = '';
+            } else {
+                document.getElementById('basic-price').textContent = '54';
+                document.getElementById('basic-period').textContent = '/year';
+                document.getElementById('basic-annual-note').textContent = '$4.50/mo • Save $6';
+                
+                document.getElementById('pro-price').textContent = '108';
+                document.getElementById('pro-period').textContent = '/year';
+                document.getElementById('pro-annual-note').textContent = '$9/mo • Save $12';
+                
+                document.getElementById('premium-price').textContent = '216';
+                document.getElementById('premium-period').textContent = '/year';
+                document.getElementById('premium-annual-note').textContent = '$18/mo • Save $24';
+            }
         }
-
+        
         function selectPlan(plan) {
-            selectedPlan = plan;
+            // Store selected plan and redirect to checkout or app
+            const interval = billingPeriod === 'monthly' ? 'month' : 'year';
             
-            // Update card styles
-            const starterCard = document.getElementById('card-starter');
-            const proCard = document.getElementById('card-pro');
-            const starterCheck = document.getElementById('starter-check');
-            const proCheck = document.getElementById('pro-check');
-            
-            starterCard.classList.remove('selected', 'border-emerald-500');
-            proCard.classList.remove('selected', 'border-emerald-500');
-            starterCheck.classList.add('hidden');
-            proCheck.classList.add('hidden');
-            
-            if (plan === 'starter') {
-                starterCard.classList.add('selected', 'border-emerald-500');
-                starterCheck.classList.remove('hidden');
-                starterCheck.classList.add('flex');
-            } else {
-                proCard.classList.add('selected', 'border-emerald-500');
-                proCheck.classList.remove('hidden');
-                proCheck.classList.add('flex');
-            }
-            
-            updateCheckoutButton();
+            // For now, redirect to app with plan parameter
+            // Later this will integrate with Stripe checkout
+            window.location.href = `app.html?plan=${plan}&interval=${interval}`;
         }
-
-        function updateCheckoutButton() {
-            const btn = document.getElementById('checkout-btn');
-            
-            if (selectedPlan) {
-                const price = PRICES[selectedPlan][billingInterval];
-                const interval = billingInterval === 'monthly' ? 'mo' : 'yr';
-                btn.textContent = `Upgrade to ${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} - $${price}/${interval}`;
-                btn.disabled = false;
-            } else {
-                btn.textContent = 'Select a plan to continue';
-                btn.disabled = true;
-            }
-        }
-
-        // ============================================
-        // CHECKOUT
-        // ============================================
-        async function checkout() {
-            if (!selectedPlan || !currentUser || !currentOrg) {
-                alert('Please select a plan');
-                return;
-            }
-
-            const btn = document.getElementById('checkout-btn');
-            btn.disabled = true;
-            btn.textContent = 'Redirecting to checkout...';
-
-            try {
-                const priceId = PRICE_IDS[selectedPlan][billingInterval];
-                
-                // Create Stripe Checkout Session via Supabase Edge Function
-                // For now, we'll use Stripe's client-only checkout (Payment Links alternative)
-                // In production, you'd create a checkout session server-side
-                
-                // Redirect to Stripe Checkout
-                const { error } = await stripe.redirectToCheckout({
-                    lineItems: [{ price: priceId, quantity: 1 }],
-                    mode: 'subscription',
-                    successUrl: window.location.origin + '/app.html?checkout=success&plan=' + selectedPlan,
-                    cancelUrl: window.location.origin + '/pricing.html?checkout=canceled',
-                    clientReferenceId: currentOrg.id, // Pass org ID to identify in webhook
-                    customerEmail: currentUser.username, // Pre-fill email
-                });
-
-                if (error) {
-                    throw error;
-                }
-            } catch (error) {
-                console.error('Checkout error:', error);
-                alert('Error starting checkout: ' + error.message);
-                btn.disabled = false;
-                updateCheckoutButton();
-            }
-        }
-
-        async function manageBilling() {
-            // In production, this would redirect to Stripe Customer Portal
-            // For now, show a message
-            alert('Billing management coming soon!\n\nTo manage your subscription, contact support@poolleaguemanager.com');
-        }
-
-        // ============================================
-        // INIT
-        // ============================================
-        init();
     </script>
 </body>
 </html>
