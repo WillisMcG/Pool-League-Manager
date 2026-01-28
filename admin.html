@@ -639,7 +639,7 @@
                                 <button onclick="viewOrgDetails('${org.id}')" class="text-purple-600 hover:text-purple-800 font-medium text-sm">
                                     View
                                 </button>
-                                <button onclick="confirmDeleteOrg('${org.id}', '${org.name.replace(/'/g, "\\'")}', '${org.slug || ''}', '${org.subscription_status || ''}')" class="text-red-600 hover:text-red-800 font-medium text-sm">
+                                <button onclick="confirmDeleteOrg('${org.id}', ${JSON.stringify(org.name)}, ${JSON.stringify(org.slug || '')}, '${org.subscription_status || ''}')" class="text-red-600 hover:text-red-800 font-medium text-sm">
                                     Delete
                                 </button>
                             </td>
@@ -765,6 +765,22 @@
         // ============================================
         // ORG DETAILS
         // ============================================
+        // Helper to render user row in org details
+        function renderOrgUserRow(u) {
+            const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '-';
+            const roleClass = u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100';
+            const lastLoginHtml = u.last_login ? formatDateTime(u.last_login) : '<span class="text-slate-400">Never</span>';
+            return '<tr class="hover:bg-slate-50">' +
+                '<td class="px-3 py-2 font-medium">' + fullName + '</td>' +
+                '<td class="px-3 py-2 text-slate-600">' + (u.email || '-') + '</td>' +
+                '<td class="px-3 py-2 text-center"><span class="px-2 py-0.5 rounded text-xs ' + roleClass + '">' + (u.role || '-') + '</span></td>' +
+                '<td class="px-3 py-2 text-center">' + (u.phone || '-') + '</td>' +
+                '<td class="px-3 py-2 text-center">' + lastLoginHtml + '</td>' +
+                '<td class="px-3 py-2 text-center font-semibold">' + (u.login_count || 0) + '</td>' +
+                '<td class="px-3 py-2 text-center"><button onclick="closeOrgModal(); openResetModal(\'' + u.id + '\')" class="text-purple-600 hover:underline">Reset PW</button></td>' +
+                '</tr>';
+        }
+
         let currentViewOrgId = null;
         
         async function viewOrgDetails(orgId) {
@@ -834,23 +850,7 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y">
-                                ${orgUsers.map(u => {
-                                    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '-';
-                                    return \`
-                                    <tr class="hover:bg-slate-50">
-                                        <td class="px-3 py-2 font-medium">\${fullName}</td>
-                                        <td class="px-3 py-2 text-slate-600">\${u.email}</td>
-                                        <td class="px-3 py-2 text-center">
-                                            <span class="px-2 py-0.5 rounded text-xs \${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100'}">\${u.role}</span>
-                                        </td>
-                                        <td class="px-3 py-2 text-center">\${u.phone || '-'}</td>
-                                        <td class="px-3 py-2 text-center">\${u.last_login ? formatDateTime(u.last_login) : '<span class="text-slate-400">Never</span>'}</td>
-                                        <td class="px-3 py-2 text-center font-semibold">\${u.login_count || 0}</td>
-                                        <td class="px-3 py-2 text-center">
-                                            <button onclick="closeOrgModal(); openResetModal('\${u.id}')" class="text-purple-600 hover:underline">Reset PW</button>
-                                        </td>
-                                    </tr>
-                                \`}).join('')}
+                                ${orgUsers.map(u => renderOrgUserRow(u)).join('')}
                             </tbody>
                         </table>
                     </div>
