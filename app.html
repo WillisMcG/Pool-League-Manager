@@ -163,6 +163,7 @@
             editingStandings: false,
             playerStatsAdjustments: {}, // { playerId: { matchWins: +/-, matchLosses: +/-, gamesWon: +/-, gamesLost: +/- } }
             editingPlayerStats: false,
+            editingUser: null, // User being edited { id, firstName, lastName, email, phone, role, teamId }
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -1682,6 +1683,118 @@
             } finally {
                 hideLoading();
             }
+        }
+        
+        // Open edit modal for a user
+        function editUser(userId) {
+            const user = state.users.find(u => u.id === userId);
+            if (!user) return;
+            
+            // Check permissions: admin can edit anyone, captain can edit their team members
+            const isAdmin = state.currentUser.role === 'admin';
+            const isCaptain = state.currentUser.role === 'captain';
+            const isOwnTeam = user.teamId === state.currentUser.teamId;
+            const isSelf = user.id === state.currentUser.id;
+            
+            if (!isAdmin && !isSelf && !(isCaptain && isOwnTeam)) {
+                alert('You do not have permission to edit this user');
+                return;
+            }
+            
+            state.editingUser = {
+                id: user.id,
+                firstName: user.firstName || '',
+                lastName: user.lastName || '',
+                email: user.email || '',
+                phone: user.phone || '',
+                role: user.role || 'player',
+                teamId: user.teamId || ''
+            };
+            render();
+        }
+        
+        // Close edit modal
+        function cancelEditUser() {
+            state.editingUser = null;
+            render();
+        }
+        
+        // Save edited user
+        async function saveUser() {
+            const edit = state.editingUser;
+            if (!edit) return;
+            
+            // Validation
+            if (!edit.email) { alert('Email is required'); return; }
+            if (!edit.phone || edit.phone.replace(/\D/g, '').length < 10) { 
+                alert('Valid phone number required (10+ digits)'); return; 
+            }
+            
+            // Check if email changed and is unique
+            const existingUser = state.users.find(u => u.email === edit.email && u.id !== edit.id);
+            if (existingUser) {
+                alert('Email already in use by another user');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const updateData = {
+                    first_name: edit.firstName || null,
+                    last_name: edit.lastName || null,
+                    email: edit.email,
+                    phone: edit.phone,
+                    role: edit.role,
+                    team_id: edit.teamId || null
+                };
+                
+                await db.from('users').update(updateData).eq('id', edit.id);
+                
+                // Update local state
+                state.users = state.users.map(u => {
+                    if (u.id === edit.id) {
+                        return {
+                            ...u,
+                            firstName: edit.firstName,
+                            lastName: edit.lastName,
+                            email: edit.email,
+                            phone: edit.phone,
+                            role: edit.role,
+                            teamId: edit.teamId || null
+                        };
+                    }
+                    return u;
+                });
+                
+                // If editing self, update currentUser too
+                if (edit.id === state.currentUser.id) {
+                    state.currentUser = {
+                        ...state.currentUser,
+                        firstName: edit.firstName,
+                        lastName: edit.lastName,
+                        email: edit.email,
+                        phone: edit.phone,
+                        role: edit.role,
+                        teamId: edit.teamId || null
+                    };
+                }
+                
+                state.editingUser = null;
+                alert('User updated successfully!');
+                render();
+            } catch (error) {
+                console.error('Error updating user:', error);
+                alert('Error updating user: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Update editing user field
+        function updateEditingUser(field, value) {
+            if (!state.editingUser) return;
+            state.editingUser[field] = value;
+            render();
         }
 
         async function selfServiceReset(email, phone) {
@@ -5243,6 +5356,84 @@
             const myTeam = state.teams.find(t => t.id === myTeamId);
             const canCreateUsers = isAdmin || isCaptain;
             
+            // Edit modal
+            const editModal = state.editingUser ? `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-t-2xl">
+                            <h3 class="text-xl font-bold">✏️ Edit User</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-1">First Name</label>
+                                    <input type="text" id="edit-firstname" value="${state.editingUser.firstName}" 
+                                        onchange="updateEditingUser('firstName', this.value)"
+                                        class="w-full px-3 py-2 border-2 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-1">Last Name</label>
+                                    <input type="text" id="edit-lastname" value="${state.editingUser.lastName}"
+                                        onchange="updateEditingUser('lastName', this.value)"
+                                        class="w-full px-3 py-2 border-2 rounded-lg">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Email *</label>
+                                <input type="email" id="edit-email" value="${state.editingUser.email}"
+                                    onchange="updateEditingUser('email', this.value)"
+                                    class="w-full px-3 py-2 border-2 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Phone *</label>
+                                <input type="tel" id="edit-phone" value="${state.editingUser.phone}"
+                                    onchange="updateEditingUser('phone', this.value)"
+                                    class="w-full px-3 py-2 border-2 rounded-lg">
+                            </div>
+                            ${isAdmin ? `
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Role</label>
+                                <select id="edit-role" onchange="updateEditingUser('role', this.value)"
+                                    class="w-full px-3 py-2 border-2 rounded-lg">
+                                    <option value="player" ${state.editingUser.role === 'player' ? 'selected' : ''}>Player</option>
+                                    <option value="captain" ${state.editingUser.role === 'captain' ? 'selected' : ''}>Captain</option>
+                                    <option value="admin" ${state.editingUser.role === 'admin' ? 'selected' : ''}>Admin</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Team</label>
+                                <select id="edit-team" onchange="updateEditingUser('teamId', this.value)"
+                                    class="w-full px-3 py-2 border-2 rounded-lg">
+                                    <option value="">No team</option>
+                                    ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => 
+                                        `<option value="${t.id}" ${state.editingUser.teamId === t.id ? 'selected' : ''}>${t.name}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                            ` : ''}
+                            <div class="flex gap-3 pt-4">
+                                <button onclick="cancelEditUser()" class="flex-1 px-4 py-2 border-2 border-slate-300 rounded-lg font-bold text-slate-600 hover:bg-slate-50">
+                                    Cancel
+                                </button>
+                                <button onclick="saveUser()" class="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700">
+                                    Save Changes
+                                </button>
+                            </div>
+                            ${isAdmin && state.editingUser.id !== state.currentUser.id ? `
+                            <div class="pt-4 border-t flex gap-2">
+                                <button onclick="resetPassword('${state.editingUser.id}')" class="flex-1 px-3 py-2 bg-yellow-500 text-white rounded-lg text-sm font-bold hover:bg-yellow-600">
+                                    🔑 Reset Password
+                                </button>
+                                <button onclick="if(confirm('Delete this user?')) { deleteUser('${state.editingUser.id}'); cancelEditUser(); }" class="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">
+                                    🗑️ Delete User
+                                </button>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            ` : '';
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
@@ -5283,30 +5474,26 @@
                             const team = state.teams.find(t => t.id === user.teamId);
                             const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
                             const displayName = getUserDisplayName(user);
+                            const canEdit = isAdmin || user.id === state.currentUser.id || (isCaptain && user.teamId === myTeamId);
                             return `
-                            <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
+                            <div onclick="${canEdit ? `editUser('${user.id}')` : ''}" 
+                                class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''} ${canEdit ? 'cursor-pointer hover:bg-slate-50' : ''}">
                                 <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold">${displayName} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
+                                    <div class="font-bold">
+                                        ${displayName} 
+                                        ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}
+                                        ${canEdit ? '<span class="text-xs text-blue-500 ml-1">✏️</span>' : ''}
+                                    </div>
                                     <div class="text-sm text-slate-500">${user.email || ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
-                                    ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
+                                    ${user.phone ? '<div class="text-sm"><span class="text-blue-600">📞 ' + user.phone + '</span></div>' : ''}
                                 </div>
-                                ${isAdmin && user.id !== state.currentUser.id ? `
-                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
-                                    <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
-                                        <option value="">No team</option>
-                                        ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                                    </select>
-                                    <button onclick="deleteUser('${user.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
-                                ` : ''}
-                                ${isCaptain && user.id !== state.currentUser.id ? `
-                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
-                                ` : ''}
                             </div>
                         `}).join('')}
                     </div>
                 </div>
+                ${editModal}
             `;
         }
 
@@ -6177,6 +6364,10 @@
         window.deleteTeam = deleteTeam;
         window.setTeamCaptain = setTeamCaptain;
         window.deleteUser = deleteUser;
+        window.editUser = editUser;
+        window.saveUser = saveUser;
+        window.cancelEditUser = cancelEditUser;
+        window.updateEditingUser = updateEditingUser;
         window.assignTeam = assignTeam;
         window.removePlayer = removePlayer;
         window.approveSubmission = approveSubmission;
