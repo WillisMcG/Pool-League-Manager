@@ -5143,7 +5143,7 @@
             const seasonTeamLeaders = [...currentSeasonTeamStats].sort((a, b) => b.wins - a.wins).slice(0, 5);
             const seasonPlayerLeaders = [...currentSeasonPlayerStats].sort((a, b) => b.wins - a.wins).slice(0, 5);
 
-            return \`
+            return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">🏅 Hall of Fame</h2>
@@ -5151,21 +5151,21 @@
                     </div>
 
                     <!-- Season Champions -->
-                    \${seasonChampions.length > 0 ? \`
+                    ${seasonChampions.length > 0 ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <h3 class="text-xl font-bold mb-4 flex items-center gap-2">🏆 Season Champions</h3>
                         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            \${seasonChampions.map(champ => \`
+                            ${seasonChampions.map(champ => `
                                 <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-lg p-4 text-center">
                                     <div class="text-3xl mb-2">🏆</div>
-                                    <div class="font-bold text-lg text-amber-800">\${champ.teamName}</div>
-                                    <div class="text-sm text-amber-600">\${champ.seasonName}</div>
-                                    <div class="text-xs text-slate-500 mt-1">\${champ.record}</div>
+                                    <div class="font-bold text-lg text-amber-800">${champ.teamName}</div>
+                                    <div class="text-sm text-amber-600">${champ.seasonName}</div>
+                                    <div class="text-xs text-slate-500 mt-1">${champ.record}</div>
                                 </div>
-                            \`).join('')}
+                            `).join('')}
                         </div>
                     </div>
-                    \` : ''}
+                    ` : ''}
 
                     <!-- Current Season Leaders -->
                     <div class="bg-white rounded-xl shadow-lg p-6">
@@ -5173,36 +5173,36 @@
                         <div class="grid md:grid-cols-2 gap-6">
                             <div>
                                 <h4 class="font-bold text-emerald-700 mb-2">Team Standings</h4>
-                                \${seasonTeamLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : \`
+                                ${seasonTeamLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : `
                                 <div class="space-y-2">
-                                    \${seasonTeamLeaders.map((t, i) => \`
-                                        <div class="flex items-center gap-3 p-2 rounded \${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
-                                            <span class="font-bold text-lg w-6 \${i === 0 ? 'text-amber-600' : 'text-slate-400'}">\${i + 1}</span>
-                                            <span class="flex-1 font-semibold">\${t.name}</span>
-                                            <span class="text-sm">\${t.wins}W-\${t.losses}L</span>
-                                            <span class="text-sm font-bold text-emerald-600">\${t.winPct.toFixed(1)}%</span>
+                                    ${seasonTeamLeaders.map((t, i) => `
+                                        <div class="flex items-center gap-3 p-2 rounded ${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
+                                            <span class="font-bold text-lg w-6 ${i === 0 ? 'text-amber-600' : 'text-slate-400'}">${i + 1}</span>
+                                            <span class="flex-1 font-semibold">${t.name}</span>
+                                            <span class="text-sm">${t.wins}W-${t.losses}L</span>
+                                            <span class="text-sm font-bold text-emerald-600">${t.winPct.toFixed(1)}%</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             <div>
                                 <h4 class="font-bold text-emerald-700 mb-2">Top Players</h4>
-                                \${seasonPlayerLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : \`
+                                ${seasonPlayerLeaders.length === 0 ? '<p class="text-slate-500">No matches played yet</p>' : `
                                 <div class="space-y-2">
-                                    \${seasonPlayerLeaders.map((p, i) => \`
-                                        <div class="flex items-center gap-3 p-2 rounded \${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
-                                            <span class="font-bold text-lg w-6 \${i === 0 ? 'text-amber-600' : 'text-slate-400'}">\${i + 1}</span>
+                                    ${seasonPlayerLeaders.map((p, i) => `
+                                        <div class="flex items-center gap-3 p-2 rounded ${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
+                                            <span class="font-bold text-lg w-6 ${i === 0 ? 'text-amber-600' : 'text-slate-400'}">${i + 1}</span>
                                             <div class="flex-1">
-                                                <span class="font-semibold">\${p.name}</span>
-                                                <span class="text-xs text-slate-500 ml-1">(\${p.team})</span>
+                                                <span class="font-semibold">${p.name}</span>
+                                                <span class="text-xs text-slate-500 ml-1">(${p.team})</span>
                                             </div>
-                                            <span class="text-sm">\${p.wins}W-\${p.losses}L</span>
-                                            <span class="text-sm font-bold text-emerald-600">\${p.winPct.toFixed(1)}%</span>
+                                            <span class="text-sm">${p.wins}W-${p.losses}L</span>
+                                            <span class="text-sm font-bold text-emerald-600">${p.winPct.toFixed(1)}%</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                         </div>
                     </div>
@@ -5211,68 +5211,64 @@
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <h3 class="text-xl font-bold mb-4">🏠 All-Time Team Records</h3>
                         <div class="grid md:grid-cols-2 gap-6">
-                            <!-- Most Match Wins -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-purple-700 mb-3 flex items-center gap-2">🥇 Most Match Wins (Lifetime)</h4>
-                                \${topTeamsByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-purple-700 mb-3">🥇 Most Match Wins (Lifetime)</h4>
+                                ${topTeamsByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topTeamsByWins.map((t, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${t.name}</span>
-                                            <span class="font-bold text-purple-600">\${t.totalWins}</span>
+                                    ${topTeamsByWins.map((t, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${t.name}</span>
+                                            <span class="font-bold text-purple-600">${t.totalWins}</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Best Win Percentage -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-blue-700 mb-3 flex items-center gap-2">📈 Best Win % (Min 5 matches)</h4>
-                                \${topTeamsByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-blue-700 mb-3">📈 Best Win % (Min 5 matches)</h4>
+                                ${topTeamsByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topTeamsByWinPct.map((t, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${t.name}</span>
-                                            <span class="font-bold text-blue-600">\${t.winPct.toFixed(1)}%</span>
+                                    ${topTeamsByWinPct.map((t, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${t.name}</span>
+                                            <span class="font-bold text-blue-600">${t.winPct.toFixed(1)}%</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Longest Win Streak -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-red-700 mb-3 flex items-center gap-2">🔥 Longest Win Streak</h4>
-                                \${topTeamsByStreak.filter(t => t.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-red-700 mb-3">🔥 Longest Win Streak</h4>
+                                ${topTeamsByStreak.filter(t => t.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topTeamsByStreak.filter(t => t.longestWinStreak > 0).map((t, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${t.name}</span>
-                                            <span class="font-bold text-red-600">\${t.longestWinStreak} wins</span>
+                                    ${topTeamsByStreak.filter(t => t.longestWinStreak > 0).map((t, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${t.name}</span>
+                                            <span class="font-bold text-red-600">${t.longestWinStreak} wins</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Most Games Won -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-emerald-700 mb-3 flex items-center gap-2">🎱 Most Games Won (Lifetime)</h4>
-                                \${topTeamsByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-emerald-700 mb-3">🎱 Most Games Won (Lifetime)</h4>
+                                ${topTeamsByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topTeamsByGames.map((t, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${t.name}</span>
-                                            <span class="font-bold text-emerald-600">\${t.totalGamesWon}</span>
+                                    ${topTeamsByGames.map((t, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${t.name}</span>
+                                            <span class="font-bold text-emerald-600">${t.totalGamesWon}</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                         </div>
                     </div>
@@ -5281,68 +5277,64 @@
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <h3 class="text-xl font-bold mb-4">👤 All-Time Player Records</h3>
                         <div class="grid md:grid-cols-2 gap-6">
-                            <!-- Most Match Wins -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-purple-700 mb-3 flex items-center gap-2">🥇 Most Match Wins (Lifetime)</h4>
-                                \${topPlayersByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-purple-700 mb-3">🥇 Most Match Wins (Lifetime)</h4>
+                                ${topPlayersByWins.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topPlayersByWins.map((p, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
-                                            <span class="font-bold text-purple-600">\${p.totalWins}</span>
+                                    ${topPlayersByWins.map((p, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${p.name} <span class="text-xs text-slate-400">(${p.team})</span></span>
+                                            <span class="font-bold text-purple-600">${p.totalWins}</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Best Win Percentage -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-blue-700 mb-3 flex items-center gap-2">📈 Best Win % (Min 10 matches)</h4>
-                                \${topPlayersByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-blue-700 mb-3">📈 Best Win % (Min 10 matches)</h4>
+                                ${topPlayersByWinPct.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topPlayersByWinPct.map((p, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
-                                            <span class="font-bold text-blue-600">\${p.winPct.toFixed(1)}%</span>
+                                    ${topPlayersByWinPct.map((p, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${p.name} <span class="text-xs text-slate-400">(${p.team})</span></span>
+                                            <span class="font-bold text-blue-600">${p.winPct.toFixed(1)}%</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Longest Win Streak -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-red-700 mb-3 flex items-center gap-2">🔥 Longest Win Streak</h4>
-                                \${topPlayersByStreak.filter(p => p.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-red-700 mb-3">🔥 Longest Win Streak</h4>
+                                ${topPlayersByStreak.filter(p => p.longestWinStreak > 0).length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topPlayersByStreak.filter(p => p.longestWinStreak > 0).map((p, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
-                                            <span class="font-bold text-red-600">\${p.longestWinStreak} wins</span>
+                                    ${topPlayersByStreak.filter(p => p.longestWinStreak > 0).map((p, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${p.name} <span class="text-xs text-slate-400">(${p.team})</span></span>
+                                            <span class="font-bold text-red-600">${p.longestWinStreak} wins</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                             
-                            <!-- Most Games Won -->
                             <div class="border rounded-lg p-4">
-                                <h4 class="font-bold text-emerald-700 mb-3 flex items-center gap-2">🎱 Most Games Won (Lifetime)</h4>
-                                \${topPlayersByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : \`
+                                <h4 class="font-bold text-emerald-700 mb-3">🎱 Most Games Won (Lifetime)</h4>
+                                ${topPlayersByGames.length === 0 ? '<p class="text-slate-500">No data yet</p>' : `
                                 <div class="space-y-1">
-                                    \${topPlayersByGames.map((p, i) => \`
-                                        <div class="flex items-center gap-2 text-sm \${i < 3 ? 'font-semibold' : ''}">
-                                            <span class="w-5 \${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">\${i + 1}.</span>
-                                            <span class="flex-1">\${p.name} <span class="text-xs text-slate-400">(\${p.team})</span></span>
-                                            <span class="font-bold text-emerald-600">\${p.totalGamesWon}</span>
+                                    ${topPlayersByGames.map((p, i) => `
+                                        <div class="flex items-center gap-2 text-sm ${i < 3 ? 'font-semibold' : ''}">
+                                            <span class="w-5 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-400'}">${i + 1}.</span>
+                                            <span class="flex-1">${p.name} <span class="text-xs text-slate-400">(${p.team})</span></span>
+                                            <span class="font-bold text-emerald-600">${p.totalGamesWon}</span>
                                         </div>
-                                    \`).join('')}
+                                    `).join('')}
                                 </div>
-                                \`}
+                                `}
                             </div>
                         </div>
                     </div>
@@ -5351,26 +5343,25 @@
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <h3 class="text-xl font-bold mb-4">📅 Single Season Records</h3>
                         <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            \${getSingleSeasonRecords().map(record => \`
+                            ${getSingleSeasonRecords().map(record => `
                                 <div class="border rounded-lg p-4 text-center">
-                                    <div class="text-2xl mb-1">\${record.icon}</div>
-                                    <div class="text-xs text-slate-500 uppercase tracking-wide">\${record.label}</div>
-                                    <div class="font-bold text-lg text-slate-800 mt-1">\${record.value}</div>
-                                    <div class="text-sm text-emerald-600 font-semibold">\${record.holder}</div>
-                                    <div class="text-xs text-slate-400">\${record.season}</div>
+                                    <div class="text-2xl mb-1">${record.icon}</div>
+                                    <div class="text-xs text-slate-500 uppercase tracking-wide">${record.label}</div>
+                                    <div class="font-bold text-lg text-slate-800 mt-1">${record.value}</div>
+                                    <div class="text-sm text-emerald-600 font-semibold">${record.holder}</div>
+                                    <div class="text-xs text-slate-400">${record.season}</div>
                                 </div>
-                            \`).join('')}
+                            `).join('')}
                         </div>
                     </div>
                 </div>
-            \`;
+            `;
         }
 
         // Hall of Fame helper functions
         function calculateAllTimeTeamStats() {
             const teamStats = {};
             
-            // Initialize all teams
             state.teams.forEach(team => {
                 teamStats[team.id] = {
                     id: team.id,
@@ -5382,19 +5373,16 @@
                     totalGamesLost: 0,
                     winPct: 0,
                     longestWinStreak: 0,
-                    currentStreak: 0,
-                    matchHistory: []
+                    currentStreak: 0
                 };
             });
             
-            // Get all matches sorted by date
             const allMatches = [...state.matches].sort((a, b) => {
                 const schedA = state.schedule.find(s => s.id === a.scheduleId);
                 const schedB = state.schedule.find(s => s.id === b.scheduleId);
                 return new Date(schedA?.date || 0) - new Date(schedB?.date || 0);
             });
             
-            // Process each match
             allMatches.forEach(match => {
                 const sched = state.schedule.find(s => s.id === match.scheduleId);
                 if (!sched || sched.isBye) return;
@@ -5406,7 +5394,6 @@
                 
                 const homeWon = match.homeScore > match.awayScore;
                 
-                // Home team stats
                 teamStats[homeId].totalMatches++;
                 teamStats[homeId].totalGamesWon += match.homeScore;
                 teamStats[homeId].totalGamesLost += match.awayScore;
@@ -5418,9 +5405,7 @@
                     teamStats[homeId].totalLosses++;
                     teamStats[homeId].currentStreak = 0;
                 }
-                teamStats[homeId].matchHistory.push({ date: sched.date, won: homeWon });
                 
-                // Away team stats
                 teamStats[awayId].totalMatches++;
                 teamStats[awayId].totalGamesWon += match.awayScore;
                 teamStats[awayId].totalGamesLost += match.homeScore;
@@ -5432,10 +5417,8 @@
                     teamStats[awayId].totalLosses++;
                     teamStats[awayId].currentStreak = 0;
                 }
-                teamStats[awayId].matchHistory.push({ date: sched.date, won: !homeWon });
             });
             
-            // Calculate win percentages
             Object.values(teamStats).forEach(team => {
                 team.winPct = team.totalMatches > 0 ? (team.totalWins / team.totalMatches) * 100 : 0;
             });
@@ -5446,7 +5429,6 @@
         function calculateAllTimePlayerStats() {
             const playerStats = {};
             
-            // Initialize all players
             state.teams.forEach(team => {
                 team.players.forEach(player => {
                     playerStats[player.id] = {
@@ -5460,30 +5442,23 @@
                         totalGamesLost: 0,
                         winPct: 0,
                         longestWinStreak: 0,
-                        currentStreak: 0,
-                        matchHistory: []
+                        currentStreak: 0
                     };
                 });
             });
             
-            // Get all matches sorted by date
             const allMatches = [...state.matches].sort((a, b) => {
                 const schedA = state.schedule.find(s => s.id === a.scheduleId);
                 const schedB = state.schedule.find(s => s.id === b.scheduleId);
                 return new Date(schedA?.date || 0) - new Date(schedB?.date || 0);
             });
             
-            // Process each match's individual games
             allMatches.forEach(match => {
-                const sched = state.schedule.find(s => s.id === match.scheduleId);
-                if (!sched) return;
-                
                 (match.matchups || []).forEach(mu => {
                     const homeGames = parseInt(mu.homeGames) || 0;
                     const awayGames = parseInt(mu.awayGames) || 0;
                     const homeWon = homeGames > awayGames;
                     
-                    // Home player
                     if (playerStats[mu.homePlayer]) {
                         playerStats[mu.homePlayer].totalMatches++;
                         playerStats[mu.homePlayer].totalGamesWon += homeGames;
@@ -5491,17 +5466,13 @@
                         if (homeWon) {
                             playerStats[mu.homePlayer].totalWins++;
                             playerStats[mu.homePlayer].currentStreak++;
-                            playerStats[mu.homePlayer].longestWinStreak = Math.max(
-                                playerStats[mu.homePlayer].longestWinStreak, 
-                                playerStats[mu.homePlayer].currentStreak
-                            );
+                            playerStats[mu.homePlayer].longestWinStreak = Math.max(playerStats[mu.homePlayer].longestWinStreak, playerStats[mu.homePlayer].currentStreak);
                         } else {
                             playerStats[mu.homePlayer].totalLosses++;
                             playerStats[mu.homePlayer].currentStreak = 0;
                         }
                     }
                     
-                    // Away player
                     if (playerStats[mu.awayPlayer]) {
                         playerStats[mu.awayPlayer].totalMatches++;
                         playerStats[mu.awayPlayer].totalGamesWon += awayGames;
@@ -5509,10 +5480,7 @@
                         if (!homeWon) {
                             playerStats[mu.awayPlayer].totalWins++;
                             playerStats[mu.awayPlayer].currentStreak++;
-                            playerStats[mu.awayPlayer].longestWinStreak = Math.max(
-                                playerStats[mu.awayPlayer].longestWinStreak, 
-                                playerStats[mu.awayPlayer].currentStreak
-                            );
+                            playerStats[mu.awayPlayer].longestWinStreak = Math.max(playerStats[mu.awayPlayer].longestWinStreak, playerStats[mu.awayPlayer].currentStreak);
                         } else {
                             playerStats[mu.awayPlayer].totalLosses++;
                             playerStats[mu.awayPlayer].currentStreak = 0;
@@ -5521,7 +5489,6 @@
                 });
             });
             
-            // Calculate win percentages
             Object.values(playerStats).forEach(player => {
                 player.winPct = player.totalMatches > 0 ? (player.totalWins / player.totalMatches) * 100 : 0;
             });
@@ -5533,43 +5500,29 @@
             const teamStats = {};
             
             state.teams.forEach(team => {
-                teamStats[team.id] = {
-                    id: team.id,
-                    name: team.name,
-                    wins: 0,
-                    losses: 0,
-                    gamesWon: 0,
-                    gamesLost: 0,
-                    winPct: 0
-                };
+                teamStats[team.id] = { id: team.id, name: team.name, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0, winPct: 0 };
             });
             
-            // Filter schedule for current season
             const seasonSchedule = state.schedule.filter(s => s.seasonId === seasonId || !seasonId);
-            const seasonMatches = state.matches.filter(m => 
-                seasonSchedule.some(s => s.id === m.scheduleId)
-            );
+            const seasonMatches = state.matches.filter(m => seasonSchedule.some(s => s.id === m.scheduleId));
             
             seasonMatches.forEach(match => {
                 const sched = seasonSchedule.find(s => s.id === match.scheduleId);
                 if (!sched || sched.isBye) return;
                 
-                const homeId = sched.homeTeamId;
-                const awayId = sched.awayTeamId;
+                if (!teamStats[sched.homeTeamId] || !teamStats[sched.awayTeamId]) return;
                 
-                if (!teamStats[homeId] || !teamStats[awayId]) return;
-                
-                teamStats[homeId].gamesWon += match.homeScore;
-                teamStats[homeId].gamesLost += match.awayScore;
-                teamStats[awayId].gamesWon += match.awayScore;
-                teamStats[awayId].gamesLost += match.homeScore;
+                teamStats[sched.homeTeamId].gamesWon += match.homeScore;
+                teamStats[sched.homeTeamId].gamesLost += match.awayScore;
+                teamStats[sched.awayTeamId].gamesWon += match.awayScore;
+                teamStats[sched.awayTeamId].gamesLost += match.homeScore;
                 
                 if (match.homeScore > match.awayScore) {
-                    teamStats[homeId].wins++;
-                    teamStats[awayId].losses++;
+                    teamStats[sched.homeTeamId].wins++;
+                    teamStats[sched.awayTeamId].losses++;
                 } else {
-                    teamStats[awayId].wins++;
-                    teamStats[homeId].losses++;
+                    teamStats[sched.awayTeamId].wins++;
+                    teamStats[sched.homeTeamId].losses++;
                 }
             });
             
@@ -5586,23 +5539,12 @@
             
             state.teams.forEach(team => {
                 team.players.forEach(player => {
-                    playerStats[player.id] = {
-                        id: player.id,
-                        name: player.name,
-                        team: team.name,
-                        wins: 0,
-                        losses: 0,
-                        gamesWon: 0,
-                        gamesLost: 0,
-                        winPct: 0
-                    };
+                    playerStats[player.id] = { id: player.id, name: player.name, team: team.name, wins: 0, losses: 0, gamesWon: 0, gamesLost: 0, winPct: 0 };
                 });
             });
             
             const seasonSchedule = state.schedule.filter(s => s.seasonId === seasonId || !seasonId);
-            const seasonMatches = state.matches.filter(m => 
-                seasonSchedule.some(s => s.id === m.scheduleId)
-            );
+            const seasonMatches = state.matches.filter(m => seasonSchedule.some(s => s.id === m.scheduleId));
             
             seasonMatches.forEach(match => {
                 (match.matchups || []).forEach(mu => {
@@ -5636,19 +5578,14 @@
 
         function getSeasonChampions() {
             const champions = [];
-            
-            // Get completed seasons (excluding current)
             const completedSeasons = (state.seasons || []).filter(s => s.id !== state.currentSeason);
             
             completedSeasons.forEach(season => {
                 const seasonSchedule = state.schedule.filter(s => s.seasonId === season.id);
-                const seasonMatches = state.matches.filter(m => 
-                    seasonSchedule.some(s => s.id === m.scheduleId)
-                );
+                const seasonMatches = state.matches.filter(m => seasonSchedule.some(s => s.id === m.scheduleId));
                 
                 if (seasonMatches.length === 0) return;
                 
-                // Calculate standings for this season
                 const standings = {};
                 state.teams.forEach(team => {
                     standings[team.id] = { id: team.id, name: team.name, wins: 0, losses: 0 };
@@ -5669,9 +5606,7 @@
                     }
                 });
                 
-                const sorted = Object.values(standings)
-                    .filter(t => t.wins + t.losses > 0)
-                    .sort((a, b) => b.wins - a.wins);
+                const sorted = Object.values(standings).filter(t => t.wins + t.losses > 0).sort((a, b) => b.wins - a.wins);
                 
                 if (sorted.length > 0) {
                     champions.push({
@@ -5684,13 +5619,11 @@
                 }
             });
             
-            return champions.reverse(); // Most recent first
+            return champions.reverse();
         }
 
         function getSingleSeasonRecords() {
             const records = [];
-            
-            // Track best single-season performances
             let bestTeamWins = { value: 0, holder: '-', season: '-' };
             let bestTeamWinPct = { value: 0, holder: '-', season: '-' };
             let bestPlayerWins = { value: 0, holder: '-', season: '-' };
