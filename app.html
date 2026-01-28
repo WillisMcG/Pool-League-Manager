@@ -164,6 +164,8 @@
             playerStatsAdjustments: {}, // { playerId: { matchWins: +/-, matchLosses: +/-, gamesWon: +/-, gamesLost: +/- } }
             editingPlayerStats: false,
             editingUser: null, // User being edited { id, firstName, lastName, email, phone, role, teamId }
+            showInviteResult: null, // { user, inviteUrl } - shown after creating user
+            inviteToken: null, // Token from URL for account setup
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -738,7 +740,8 @@
                     id: u.id, email: u.email, password: u.password, phone: u.phone,
                     firstName: u.first_name || '', lastName: u.last_name || '',
                     role: u.role, teamId: u.team_id, playerId: u.player_id,
-                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
+                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id,
+                    inviteToken: u.invite_token, status: u.status || 'active'
                 }));
 
                 const { data: teams, error: teamsError } = await db.from('teams')
@@ -1599,6 +1602,157 @@
             render();
         }
 
+        // Generate a random invite token
+        function generateInviteToken() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+            let token = '';
+            for (let i = 0; i < 32; i++) {
+                token += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return token;
+        }
+        
+        // Get the base URL for invite links
+        function getInviteUrl(token) {
+            const baseUrl = window.location.origin + window.location.pathname;
+            return baseUrl + '?invite=' + token;
+        }
+        
+        // Create a new user with invite token (no password required initially)
+        async function inviteUser(email, phone, role = 'player', teamId = null, firstName = '', lastName = '') {
+            if (!email) { alert('Email is required'); return null; }
+            if (!phone || phone.replace(/\D/g, '').length < 10) { alert('Valid phone number required (10+ digits)'); return null; }
+            if (state.users.find(u => u.email === email)) { alert('Email already exists'); return null; }
+            if (!state.organization?.id) { alert('No organization loaded'); return null; }
+
+            showLoading();
+            try {
+                const inviteToken = generateInviteToken();
+                
+                const { data, error } = await db.from('users').insert([{
+                    email, 
+                    phone,
+                    first_name: firstName || null,
+                    last_name: lastName || null,
+                    role: role || 'player',
+                    team_id: teamId || null,
+                    org_id: state.organization.id,
+                    created_by: state.currentUser?.id || null,
+                    invite_token: inviteToken,
+                    status: 'pending'
+                }]).select().single();
+
+                if (error) throw error;
+
+                const user = {
+                    id: data.id, 
+                    email: data.email, 
+                    firstName: data.first_name || '', 
+                    lastName: data.last_name || '',
+                    phone: data.phone, 
+                    role: data.role, 
+                    teamId: data.team_id,
+                    createdAt: data.created_at, 
+                    createdBy: data.created_by, 
+                    orgId: data.org_id,
+                    inviteToken: data.invite_token,
+                    status: data.status || 'pending'
+                };
+
+                state.users = [...state.users, user];
+                render();
+                
+                return {
+                    user,
+                    inviteUrl: getInviteUrl(inviteToken)
+                };
+            } catch (error) {
+                console.error('Error inviting user:', error);
+                alert('Error inviting user: ' + error.message);
+                return null;
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Resend invite - generates new token
+        async function resendInvite(userId) {
+            const user = state.users.find(u => u.id === userId);
+            if (!user) return null;
+            
+            showLoading();
+            try {
+                const newToken = generateInviteToken();
+                
+                await db.from('users').update({
+                    invite_token: newToken,
+                    status: 'pending'
+                }).eq('id', userId);
+                
+                // Update local state
+                state.users = state.users.map(u => {
+                    if (u.id === userId) {
+                        return { ...u, inviteToken: newToken, status: 'pending' };
+                    }
+                    return u;
+                });
+                
+                render();
+                return getInviteUrl(newToken);
+            } catch (error) {
+                console.error('Error resending invite:', error);
+                alert('Error resending invite: ' + error.message);
+                return null;
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Complete invite - set password and activate account
+        async function completeInvite(token, password) {
+            if (!token) { alert('Invalid invite link'); return null; }
+            if (!password || password.length < 4) { alert('Password must be at least 4 characters'); return null; }
+            
+            showLoading();
+            try {
+                // Find user by token
+                const { data: users, error: findError } = await db.from('users')
+                    .select('*')
+                    .eq('invite_token', token)
+                    .limit(1);
+                
+                if (findError) throw findError;
+                if (!users || users.length === 0) {
+                    alert('Invalid or expired invite link. Please contact your league administrator.');
+                    return null;
+                }
+                
+                const userData = users[0];
+                
+                // Update user with password and clear token
+                const { error: updateError } = await db.from('users').update({
+                    password: password,
+                    invite_token: null,
+                    status: 'active'
+                }).eq('id', userData.id);
+                
+                if (updateError) throw updateError;
+                
+                alert('Account activated! You can now sign in with your email and password.');
+                return {
+                    email: userData.email,
+                    orgId: userData.org_id
+                };
+            } catch (error) {
+                console.error('Error completing invite:', error);
+                alert('Error setting up account: ' + error.message);
+                return null;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Legacy createAccount for backwards compatibility and admin self-registration
         async function createAccount(email, password, phone, role = null, teamId = null, firstName = '', lastName = '') {
             if (!email || !password) { alert('Email and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
@@ -1617,7 +1771,8 @@
                     role: finalRole,
                     team_id: teamId || null,
                     org_id: state.organization.id,
-                    created_by: state.currentUser?.id || null
+                    created_by: state.currentUser?.id || null,
+                    status: 'active'
                 }]).select().single();
 
                 if (error) throw error;
@@ -1626,7 +1781,8 @@
                     id: data.id, email: data.email, password: data.password,
                     firstName: data.first_name || '', lastName: data.last_name || '',
                     phone: data.phone, role: data.role, teamId: data.team_id,
-                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
+                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id,
+                    status: data.status || 'active'
                 };
 
                 state.users = [...state.users, user];
@@ -5382,6 +5538,44 @@
             const myTeam = state.teams.find(t => t.id === myTeamId);
             const canCreateUsers = isAdmin || isCaptain;
             
+            // Invite result modal (shown after creating user)
+            const inviteModal = state.showInviteResult ? `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-t-2xl">
+                            <h3 class="text-xl font-bold">✅ User Invited!</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <p class="text-slate-700">
+                                <strong>${getUserDisplayName(state.showInviteResult.user)}</strong> has been added.
+                            </p>
+                            <p class="text-sm text-slate-600">
+                                Share this setup link with them to complete their account:
+                            </p>
+                            <div class="bg-slate-100 p-3 rounded-lg">
+                                <input type="text" readonly value="${state.showInviteResult.inviteUrl}" 
+                                    id="invite-url-input"
+                                    class="w-full bg-transparent text-sm text-slate-700 border-0 outline-none">
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="copyInviteLink()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">
+                                    📋 Copy Link
+                                </button>
+                                <button onclick="sendInviteSMS()" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">
+                                    📱 Send SMS
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-500 text-center">
+                                The link is single-use and works until they set their password.
+                            </p>
+                            <button onclick="closeInviteModal()" class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg font-bold text-slate-600 hover:bg-slate-50">
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ` : '';
+            
             // Edit modal
             const editModal = state.editingUser ? `
                 <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -5447,10 +5641,15 @@
                             </div>
                             ${isAdmin && state.editingUser.id !== state.currentUser.id ? `
                             <div class="pt-4 border-t flex gap-2">
+                                <button onclick="handleResendInvite('${state.editingUser.id}')" class="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600">
+                                    📧 Resend Invite
+                                </button>
                                 <button onclick="resetPassword('${state.editingUser.id}')" class="flex-1 px-3 py-2 bg-yellow-500 text-white rounded-lg text-sm font-bold hover:bg-yellow-600">
                                     🔑 Reset Password
                                 </button>
-                                <button onclick="if(confirm('Delete this user?')) { deleteUser('${state.editingUser.id}'); cancelEditUser(); }" class="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">
+                            </div>
+                            <div class="pt-2">
+                                <button onclick="if(confirm('Delete this user?')) { deleteUser('${state.editingUser.id}'); cancelEditUser(); }" class="w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">
                                     🗑️ Delete User
                                 </button>
                             </div>
@@ -5469,15 +5668,15 @@
 
                     ${canCreateUsers ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
+                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Invite Team Member' : 'Invite User'}</button>
                         <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
+                            <p class="text-sm text-slate-600">They'll receive a link to set up their password.</p>
                             <div class="grid grid-cols-2 gap-2">
                                 <input type="text" id="new-firstname" placeholder="First Name" class="w-full px-4 py-2 border-2 rounded-lg">
                                 <input type="text" id="new-lastname" placeholder="Last Name" class="w-full px-4 py-2 border-2 rounded-lg">
                             </div>
-                            <input type="email" id="new-email" placeholder="Email" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="email" id="new-email" placeholder="Email *" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="tel" id="new-phone" placeholder="Phone *" class="w-full px-4 py-2 border-2 rounded-lg">
                             ${isAdmin ? `
                                 <select id="new-user-role" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="player">Player (view only)</option>
@@ -5489,7 +5688,7 @@
                                     ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
                                 </select>
                             ` : `<p class="text-xs text-slate-500">New member will be added to your team as a player</p>`}
-                            <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
+                            <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Send Invite</button>
                         </div>
                     </div>
                     ` : ''}
@@ -5501,15 +5700,17 @@
                             const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
                             const displayName = getUserDisplayName(user);
                             const canEdit = isAdmin || user.id === state.currentUser.id || (isCaptain && user.teamId === myTeamId);
+                            const isPending = user.status === 'pending' || user.inviteToken;
                             return `
                             <div onclick="${canEdit ? `editUser('${user.id}')` : ''}" 
                                 class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''} ${canEdit ? 'cursor-pointer hover:bg-slate-50' : ''}">
                                 <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold">
+                                    <div class="font-bold flex items-center gap-2 flex-wrap">
                                         ${displayName} 
                                         ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}
-                                        ${canEdit ? '<span class="text-xs text-blue-500 ml-1">✏️</span>' : ''}
+                                        ${isPending ? '<span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">⏳ Pending</span>' : ''}
+                                        ${canEdit ? '<span class="text-xs text-blue-500">✏️</span>' : ''}
                                     </div>
                                     <div class="text-sm text-slate-500">${user.email || ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
@@ -5520,6 +5721,7 @@
                     </div>
                 </div>
                 ${editModal}
+                ${inviteModal}
             `;
         }
 
@@ -6114,7 +6316,6 @@
             const firstName = document.getElementById('new-firstname').value;
             const lastName = document.getElementById('new-lastname').value;
             const email = document.getElementById('new-email').value;
-            const password = document.getElementById('new-password').value;
             const phone = document.getElementById('new-phone').value;
             
             // Admins can pick role and team, captains create players for their team
@@ -6134,15 +6335,21 @@
                 teamId = state.currentUser.teamId;
             }
             
-            if (await createAccount(email, password, phone, role, teamId, firstName, lastName)) {
+            // Use invite system - no password needed
+            const result = await inviteUser(email, phone, role, teamId, firstName, lastName);
+            
+            if (result) {
                 document.getElementById('new-firstname').value = '';
                 document.getElementById('new-lastname').value = '';
                 document.getElementById('new-email').value = '';
-                document.getElementById('new-password').value = '';
                 document.getElementById('new-phone').value = '';
                 if (roleSelect) roleSelect.value = 'player';
                 if (teamSelect) teamSelect.value = '';
                 document.getElementById('create-user-form').classList.add('hidden');
+                
+                // Show invite link modal
+                state.showInviteResult = result;
+                render();
             }
         };
 
@@ -6326,6 +6533,83 @@
                 input.value = '';
             }
         };
+        
+        // Invite system functions
+        window.inviteUser = inviteUser;
+        window.resendInvite = resendInvite;
+        window.completeInvite = completeInvite;
+        
+        window.copyInviteLink = function() {
+            const input = document.getElementById('invite-url-input');
+            if (input) {
+                input.select();
+                document.execCommand('copy');
+                alert('Link copied to clipboard!');
+            }
+        };
+        
+        window.sendInviteSMS = function() {
+            if (!state.showInviteResult) return;
+            const user = state.showInviteResult.user;
+            const url = state.showInviteResult.inviteUrl;
+            const phone = user.phone?.replace(/\D/g, '');
+            const displayName = getUserDisplayName(user);
+            const leagueName = state.leagueName || 'Pool League';
+            
+            const message = `Welcome to ${leagueName}! Set up your account here: ${url}`;
+            
+            // Open SMS app with pre-filled message
+            window.open(`sms:${phone}?body=${encodeURIComponent(message)}`, '_blank');
+        };
+        
+        window.closeInviteModal = function() {
+            state.showInviteResult = null;
+            render();
+        };
+        
+        window.handleResendInvite = async function(userId) {
+            const url = await resendInvite(userId);
+            if (url) {
+                const user = state.users.find(u => u.id === userId);
+                state.showInviteResult = { user, inviteUrl: url };
+                state.editingUser = null;
+                render();
+            }
+        };
+        
+        window.handleCompleteInvite = async function() {
+            const password = document.getElementById('setup-password').value;
+            const password2 = document.getElementById('setup-password2').value;
+            const errorEl = document.getElementById('setup-error');
+            
+            if (!password || password.length < 4) {
+                errorEl.textContent = 'Password must be at least 4 characters';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            
+            if (password !== password2) {
+                errorEl.textContent = 'Passwords do not match';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            
+            const result = await completeInvite(state.inviteToken, password);
+            if (result) {
+                // Clear invite token from URL and state
+                window.history.replaceState({}, document.title, window.location.pathname);
+                state.inviteToken = null;
+                
+                // Pre-fill email on login form
+                render();
+                setTimeout(() => {
+                    const emailInput = document.getElementById('login-email');
+                    if (emailInput && result.email) {
+                        emailInput.value = result.email;
+                    }
+                }, 100);
+            }
+        };
 
         window.switchSeason = switchSeason;
         window.setActiveSeason = setActiveSeason;
@@ -6353,7 +6637,11 @@
             }
 
             const app = document.getElementById('app');
-            if (!window.state.currentUser) {
+            
+            // Check for invite token in URL
+            if (window.state.inviteToken) {
+                app.innerHTML = renderInviteSetup();
+            } else if (!window.state.currentUser) {
                 app.innerHTML = renderLoginScreen();
             } else if (window.state.showLeagueSelector) {
                 app.innerHTML = renderLeagueSelector();
@@ -6367,6 +6655,41 @@
                     </div>
                 `;
             }
+        }
+        
+        // Invite setup page for new users
+        function renderInviteSetup() {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border-4 border-emerald-700">
+                        <div class="text-center mb-8">
+                            <div class="text-6xl mb-4">🎱</div>
+                            <h1 class="text-3xl font-black text-slate-800 mb-2">Welcome!</h1>
+                            <p class="text-slate-600">Set up your account to get started</p>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Create Your Password</label>
+                                <input type="password" id="setup-password" placeholder="Password (min 4 characters)" 
+                                    class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-1">Confirm Password</label>
+                                <input type="password" id="setup-password2" placeholder="Confirm password" 
+                                    class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            </div>
+                            <div id="setup-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
+                            <button onclick="handleCompleteInvite()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
+                                🚀 Activate Account
+                            </button>
+                            <p class="text-xs text-slate-500 text-center mt-4">
+                                After setting your password, you'll be able to sign in and view your league.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
         
         // League selector for users in multiple leagues
@@ -6416,6 +6739,16 @@
         // ============================================
         async function init() {
             render(); // Show loading screen
+            
+            // Check for invite token in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const inviteToken = urlParams.get('invite');
+            if (inviteToken) {
+                state.inviteToken = inviteToken;
+                state.initialized = true;
+                render();
+                return; // Don't load session, just show setup page
+            }
             
             const session = localStorage.getItem('plm_session');
             if (session) {
