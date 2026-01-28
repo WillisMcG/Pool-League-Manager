@@ -189,11 +189,27 @@
             weekMatches: [],
             selectedMatch: '',
             selectedTeam: '',
-            matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
+            matchups: [], // Will be populated based on season's gamesPerMatch
             initialized: false,
             // Play days for manual schedule entry (stored locally)
             playDays: JSON.parse(localStorage.getItem('plm_playDays') || '[2]') // Default Tuesday (0=Sun, 1=Mon, 2=Tue, etc.)
         };
+        
+        // Helper to create empty matchups array based on season settings
+        function createEmptyMatchups() {
+            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
+            return Array(gamesPerMatch).fill(null).map(() => ({ 
+                homePlayer: '', 
+                awayPlayer: '', 
+                homeGames: '', 
+                awayGames: '' 
+            }));
+        }
+        
+        // Reset matchups to empty based on current season
+        function resetMatchups() {
+            state.matchups = createEmptyMatchups();
+        }
 
         // ============================================
         // MANUAL ENTRY HELPER FUNCTIONS
@@ -724,7 +740,9 @@
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
                     isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id,
                     standingsAdjustments: s.standings_adjustments || {},
-                    playerStatsAdjustments: s.player_stats_adjustments || {}
+                    playerStatsAdjustments: s.player_stats_adjustments || {},
+                    gamesPerMatch: s.games_per_match || 5,
+                    raceTo: s.race_to || 2
                 }));
                 
                 // Set current season to active non-archived one, or most recent non-archived
@@ -982,14 +1000,21 @@
             
             showLoading();
             try {
+                // Get settings from most recent season (if any)
+                const previousSeason = state.seasons[0]; // Already sorted by created_at desc
+                const gamesPerMatch = previousSeason?.gamesPerMatch || 5;
+                const raceTo = previousSeason?.raceTo || 2;
+                
                 // Deactivate all other seasons for this org
                 await db.from('seasons').update({ is_active: false }).eq('org_id', state.organization.id);
                 
-                // Create new active season
+                // Create new active season with copied settings
                 const { data, error } = await db.from('seasons').insert([{
                     name: name.trim(),
                     is_active: true,
-                    org_id: state.organization.id
+                    org_id: state.organization.id,
+                    games_per_match: gamesPerMatch,
+                    race_to: raceTo
                 }]).select().single();
                 
                 if (error) throw error;
@@ -1001,7 +1026,9 @@
                     endDate: data.end_date,
                     isActive: data.is_active,
                     createdAt: data.created_at,
-                    orgId: data.org_id
+                    orgId: data.org_id,
+                    gamesPerMatch: data.games_per_match || 5,
+                    raceTo: data.race_to || 2
                 };
                 
                 state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
@@ -2785,6 +2812,7 @@
             const matchups = state.matchups;
             const seasonId = state.currentSeason?.id;
             const isAdmin = state.currentUser?.role === 'admin';
+            const raceTo = state.currentSeason?.raceTo || 2;
 
             // Admin only needs match selected, captains need both match and team
             if (!sel) { alert('Select a match'); return; }
@@ -2796,8 +2824,11 @@
                 const hg = parseInt(m.homeGames) || 0;
                 const ag = parseInt(m.awayGames) || 0;
                 if (!m.homePlayer || !m.awayPlayer) { alert(`Game ${i + 1}: Select both players`); return; }
-                if (!((hg === 2 && ag <= 1) || (ag === 2 && hg <= 1))) {
-                    alert(`Game ${i + 1}: One player must win 2, other 0 or 1`); return;
+                // Validate: exactly one player must reach raceTo, other must be less
+                const validScore = (hg === raceTo && ag < raceTo) || (ag === raceTo && hg < raceTo);
+                if (!validScore) {
+                    alert(`Game ${i + 1}: One player must win ${raceTo}, other must have less than ${raceTo}`); 
+                    return;
                 }
             }
 
@@ -2901,7 +2932,7 @@
 
                 state.selectedMatch = '';
                 state.selectedTeam = '';
-                state.matchups = Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' }));
+                resetMatchups();
                 render();
             } catch (error) {
                 console.error('Error submitting scores:', error);
@@ -4898,6 +4929,13 @@
 
         function renderSubmitScores() {
             const isAdmin = state.currentUser?.role === 'admin';
+            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
+            
+            // Ensure matchups array has correct number of entries
+            if (state.matchups.length !== gamesPerMatch) {
+                state.matchups = createEmptyMatchups();
+            }
+            
             const availMatches = state.schedule.filter(m => {
                 if (m.isBye || state.matches.find(x => x.scheduleId === m.id)) return false;
                 if (m.isPositionNight) {
@@ -4992,6 +5030,9 @@
                         ${canEnterScores ? `
                             <div class="${isAdmin ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} p-4 rounded-lg border mb-6">
                                 <h3 class="font-bold ${isAdmin ? 'text-amber-800' : 'text-emerald-800'}">${away.name} @ ${home.name}</h3>
+                                <p class="text-sm ${isAdmin ? 'text-amber-700' : 'text-emerald-700'} mt-1">
+                                    📊 ${state.currentSeason?.gamesPerMatch || 5} games per match • Race to ${state.currentSeason?.raceTo || 2}
+                                </p>
                             </div>
 
                             ${(() => {
@@ -5016,6 +5057,10 @@
                                         .sort((a, b) => a.name.localeCompare(b.name))
                                         .filter(p => !otherAwaySelections.includes(p.id));
                                     
+                                    const raceTo = state.currentSeason?.raceTo || 2;
+                                    // Generate dropdown options: 0 to raceTo
+                                    const scoreOptions = Array.from({length: raceTo + 1}, (_, i) => i);
+                                    
                                     return `
                                         <div class="border rounded-lg p-4 mb-4 bg-slate-50">
                                             <h4 class="font-bold mb-3">Game ${i + 1}</h4>
@@ -5023,18 +5068,24 @@
                                                 <div>
                                                     <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
                                                     <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                        <option value="">Select...</option>
+                                                        <option value="">Select player...</option>
                                                         ${availableHomePlayers.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
+                                                    <select onchange="state.matchups[${i}].homeGames = this.value; window.render();" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
+                                                        <option value="">Games</option>
+                                                        ${scoreOptions.map(n => `<option value="${n}" ${m.homeGames === String(n) || m.homeGames === n ? 'selected' : ''}>${n}</option>`).join('')}
+                                                    </select>
                                                 </div>
                                                 <div>
                                                     <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
                                                     <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                        <option value="">Select...</option>
+                                                        <option value="">Select player...</option>
                                                         ${availableAwayPlayers.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
+                                                    <select onchange="state.matchups[${i}].awayGames = this.value; window.render();" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
+                                                        <option value="">Games</option>
+                                                        ${scoreOptions.map(n => `<option value="${n}" ${m.awayGames === String(n) || m.awayGames === n ? 'selected' : ''}>${n}</option>`).join('')}
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
@@ -6328,6 +6379,41 @@
                         ` : ''}
                     </div>
                     
+                    <!-- Match Format Settings for Current Season -->
+                    ${state.currentSeason ? `
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h3 class="text-lg font-bold mb-4">🎱 Match Format Settings</h3>
+                        <p class="text-sm text-slate-600 mb-4">Configure the scoring format for <span class="font-semibold">${state.currentSeason.name}</span>. These settings apply to this season only.</p>
+                        
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-bold mb-2">Games Per Match</label>
+                                <p class="text-xs text-slate-500 mb-2">How many individual player matchups per team match</p>
+                                <select id="games-per-match" class="w-full px-4 py-3 border-2 rounded-lg text-lg">
+                                    ${[3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${(state.currentSeason.gamesPerMatch || 5) === n ? 'selected' : ''}>${n} games</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-2">Race To</label>
+                                <p class="text-xs text-slate-500 mb-2">Games needed to win each individual matchup</p>
+                                <select id="race-to" class="w-full px-4 py-3 border-2 rounded-lg text-lg">
+                                    ${[1,2,3,4,5].map(n => `<option value="${n}" ${(state.currentSeason.raceTo || 2) === n ? 'selected' : ''}>Race to ${n} ${n === 1 ? '(single game)' : n === 2 ? '(best of 3)' : n === 3 ? '(best of 5)' : n === 4 ? '(best of 7)' : '(best of 9)'}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 p-3 bg-slate-50 rounded-lg">
+                            <p class="text-sm text-slate-700">
+                                <strong>Current format:</strong> ${state.currentSeason.gamesPerMatch || 5} player matchups per team match, each is race to ${state.currentSeason.raceTo || 2}
+                            </p>
+                        </div>
+                        
+                        <button onclick="saveMatchFormatSettings()" class="mt-4 w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700">
+                            💾 Save Match Format
+                        </button>
+                    </div>
+                    ` : ''}
+                    
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <label class="block text-sm font-bold mb-2">League Name</label>
                         <input type="text" id="league-name" value="${state.leagueName}" class="w-full px-4 py-2 border-2 rounded-lg mb-4">
@@ -6443,6 +6529,46 @@
         window.handleSaveSettings = async function() {
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
+        };
+        
+        window.saveMatchFormatSettings = async function() {
+            if (!state.currentSeason?.id) {
+                alert('No season selected');
+                return;
+            }
+            
+            const gamesPerMatch = parseInt(document.getElementById('games-per-match').value) || 5;
+            const raceTo = parseInt(document.getElementById('race-to').value) || 2;
+            
+            showLoading();
+            try {
+                const { error } = await db.from('seasons').update({
+                    games_per_match: gamesPerMatch,
+                    race_to: raceTo
+                }).eq('id', state.currentSeason.id);
+                
+                if (error) throw error;
+                
+                // Update local state
+                state.currentSeason.gamesPerMatch = gamesPerMatch;
+                state.currentSeason.raceTo = raceTo;
+                state.seasons = state.seasons.map(s => 
+                    s.id === state.currentSeason.id 
+                        ? { ...s, gamesPerMatch, raceTo } 
+                        : s
+                );
+                
+                // Reset matchups to reflect new game count
+                resetMatchups();
+                
+                alert(`Match format updated!\n\n${gamesPerMatch} games per match\nRace to ${raceTo}`);
+                render();
+            } catch (error) {
+                console.error('Error saving match format:', error);
+                alert('Error saving match format settings');
+            } finally {
+                hideLoading();
+            }
         };
 
         // Password reset handlers
