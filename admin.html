@@ -281,7 +281,7 @@
                 <div class="flex justify-between items-start mb-6">
                     <h2 class="text-2xl font-bold">🏢 Organization Details</h2>
                     <div class="flex items-center gap-2">
-                        <button onclick="closeOrgModal(); confirmDeleteOrg(currentViewOrgId)" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm">
+                        <button onclick="deleteFromOrgModal()" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm">
                             🗑️ Delete Org
                         </button>
                         <button onclick="closeOrgModal()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
@@ -628,7 +628,7 @@
                                 <button onclick="viewOrgDetails('${org.id}')" class="text-purple-600 hover:text-purple-800 font-medium text-sm">
                                     View
                                 </button>
-                                <button onclick="confirmDeleteOrg('${org.id}')" class="text-red-600 hover:text-red-800 font-medium text-sm">
+                                <button onclick="confirmDeleteOrg('${org.id}', '${org.name.replace(/'/g, "\\'")}', '${org.slug || ''}', '${org.subscription_status || ''}')" class="text-red-600 hover:text-red-800 font-medium text-sm">
                                     Delete
                                 </button>
                             </td>
@@ -843,6 +843,15 @@
             currentViewOrgId = null;
         }
 
+        function deleteFromOrgModal() {
+            if (!currentViewOrgId) return;
+            const org = allOrgs.find(o => o.id === currentViewOrgId);
+            closeOrgModal();
+            if (org) {
+                confirmDeleteOrg(org.id, org.name, org.slug, org.subscription_status);
+            }
+        }
+
         // ============================================
         // DELETE ORGANIZATION
         // ============================================
@@ -850,10 +859,11 @@
         let deleteOrgName = null;
         let deleteOrgData = null;
 
-        async function confirmDeleteOrg(orgId) {
+        async function confirmDeleteOrg(orgId, orgName, orgSlug, orgStatus) {
             deleteOrgId = orgId;
-            const org = allOrgs.find(o => o.id === orgId);
-            deleteOrgName = org?.name || '';
+            deleteOrgName = orgName || '';
+            
+            console.log('Delete org:', { orgId, orgName, orgSlug, orgStatus });
             
             // Show loading state
             document.getElementById('delete-org-info').innerHTML = `<div class="text-center">Loading organization data...</div>`;
@@ -867,9 +877,9 @@
             
             // Display org info
             document.getElementById('delete-org-info').innerHTML = `
-                <div class="font-bold text-lg text-red-800">${org?.name || 'Unknown'}</div>
-                <div class="text-sm text-red-700">Slug: ${org?.slug || '-'}</div>
-                <div class="text-sm text-red-700">Status: ${org?.subscription_status || '-'}</div>
+                <div class="font-bold text-lg text-red-800">${orgName || 'Unknown'}</div>
+                <div class="text-sm text-red-700">Slug: ${orgSlug || '-'}</div>
+                <div class="text-sm text-red-700">Status: ${orgStatus || '-'}</div>
             `;
             
             // Display deletion summary
@@ -888,7 +898,10 @@
             
             // Enable delete button when name matches
             document.getElementById('delete-confirm-name').oninput = function() {
-                const matches = this.value.trim().toLowerCase() === deleteOrgName.toLowerCase();
+                const inputVal = this.value.trim().toLowerCase();
+                const targetVal = deleteOrgName.toLowerCase();
+                const matches = inputVal === targetVal;
+                console.log('Comparing:', { input: inputVal, target: targetVal, matches });
                 document.getElementById('delete-org-btn').disabled = !matches;
             };
         }
