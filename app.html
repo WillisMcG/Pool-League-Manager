@@ -2994,7 +2994,7 @@
                         <div class="text-center mb-8">
                             <div class="text-6xl mb-4">🏆</div>
                             <h1 class="text-4xl font-black text-slate-800 mb-2">Pool League</h1>
-                            <p class="text-slate-600">Sign In</p>
+                            <p class="text-slate-600" id="form-title">Sign In</p>
                             <p class="text-xs text-emerald-600 mt-2">☁️ Cloud-Synced</p>
                         </div>
                         
@@ -3006,8 +3006,34 @@
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
                                 Sign In
                             </button>
-                            <button onclick="showResetForm()" class="w-full text-sm text-emerald-600 hover:text-emerald-800 py-2">
-                                Forgot Password?
+                            <div class="flex justify-between text-sm">
+                                <button onclick="showResetForm()" class="text-emerald-600 hover:text-emerald-800">
+                                    Forgot Password?
+                                </button>
+                                <button onclick="showSignupForm()" class="text-blue-600 hover:text-blue-800 font-semibold">
+                                    Create Account →
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Sign Up Form (hidden by default) -->
+                        <div id="signup-form" class="space-y-4 hidden">
+                            <p class="text-sm text-slate-600 text-center mb-4">Create a new league organization</p>
+                            <input type="text" id="signup-org-name" placeholder="Organization / League Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="text" id="signup-firstname" placeholder="First Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                                <input type="text" id="signup-lastname" placeholder="Last Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            </div>
+                            <input type="email" id="signup-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="tel" id="signup-phone" placeholder="Phone" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="password" id="signup-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="password" id="signup-password2" placeholder="Confirm Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <div id="signup-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
+                            <button onclick="handleSignup()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-lg hover:from-blue-700 hover:to-indigo-700">
+                                🚀 Create Organization
+                            </button>
+                            <button onclick="showLoginForm()" class="w-full text-sm text-slate-600 hover:text-slate-800 py-2">
+                                ← Back to Login
                             </button>
                         </div>
                         
@@ -6157,12 +6183,20 @@
         
         window.showResetForm = function() {
             document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('signup-form')?.classList.add('hidden');
             document.getElementById('reset-form').classList.remove('hidden');
         };
         
         window.showLoginForm = function() {
             document.getElementById('reset-form').classList.add('hidden');
+            document.getElementById('signup-form')?.classList.add('hidden');
             document.getElementById('login-form').classList.remove('hidden');
+        };
+        
+        window.showSignupForm = function() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('reset-form').classList.add('hidden');
+            document.getElementById('signup-form').classList.remove('hidden');
         };
         
         window.handleSelfReset = async function() {
@@ -6172,6 +6206,117 @@
                 document.getElementById('reset-email').value = '';
                 document.getElementById('reset-phone').value = '';
                 showLoginForm();
+            }
+        };
+        
+        window.handleSignup = async function() {
+            const orgName = document.getElementById('signup-org-name').value.trim();
+            const firstName = document.getElementById('signup-firstname').value.trim();
+            const lastName = document.getElementById('signup-lastname').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const phone = document.getElementById('signup-phone').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const password2 = document.getElementById('signup-password2').value;
+            const errorEl = document.getElementById('signup-error');
+            
+            // Validation
+            if (!orgName) {
+                errorEl.textContent = 'Organization name is required';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (!email) {
+                errorEl.textContent = 'Email is required';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (!phone || phone.replace(/\D/g, '').length < 10) {
+                errorEl.textContent = 'Valid phone number required (10+ digits)';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (!password || password.length < 4) {
+                errorEl.textContent = 'Password must be at least 4 characters';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (password !== password2) {
+                errorEl.textContent = 'Passwords do not match';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            
+            showLoading();
+            try {
+                // Check if email already exists
+                const { data: existingUsers } = await db.from('users').select('id').eq('email', email).limit(1);
+                if (existingUsers && existingUsers.length > 0) {
+                    errorEl.textContent = 'Email already registered. Please sign in.';
+                    errorEl.classList.remove('hidden');
+                    hideLoading();
+                    return;
+                }
+                
+                // Create organization with 14-day trial
+                const trialEnds = new Date();
+                trialEnds.setDate(trialEnds.getDate() + 14);
+                
+                const { data: newOrg, error: orgError } = await db.from('organizations').insert({
+                    name: orgName,
+                    subscription_tier: 'trial',
+                    subscription_status: 'trial',
+                    trial_ends_at: trialEnds.toISOString()
+                }).select().single();
+                
+                if (orgError) throw orgError;
+                
+                // Create admin user
+                const { data: newUser, error: userError } = await db.from('users').insert({
+                    email: email,
+                    password: password,
+                    phone: phone,
+                    first_name: firstName || null,
+                    last_name: lastName || null,
+                    role: 'admin',
+                    org_id: newOrg.id
+                }).select().single();
+                
+                if (userError) throw userError;
+                
+                // Create org_membership if table exists
+                try {
+                    await db.from('org_memberships').insert({
+                        user_id: newUser.id,
+                        org_id: newOrg.id,
+                        role: 'owner'
+                    });
+                } catch (e) {
+                    // org_memberships table might not exist yet, that's ok
+                    console.log('org_memberships table not found, skipping');
+                }
+                
+                alert(`Welcome to Pool League Manager! 🎉\n\nYour organization "${orgName}" has been created with a 14-day free trial.\n\nYou can now sign in with your email and password.`);
+                
+                // Clear form and switch to login
+                document.getElementById('signup-org-name').value = '';
+                document.getElementById('signup-firstname').value = '';
+                document.getElementById('signup-lastname').value = '';
+                document.getElementById('signup-email').value = '';
+                document.getElementById('signup-phone').value = '';
+                document.getElementById('signup-password').value = '';
+                document.getElementById('signup-password2').value = '';
+                errorEl.classList.add('hidden');
+                
+                // Pre-fill login email
+                showLoginForm();
+                document.getElementById('login-email').value = email;
+                
+            } catch (error) {
+                console.error('Signup error:', error);
+                errorEl.textContent = 'Error creating account: ' + error.message;
+                errorEl.classList.remove('hidden');
+            } finally {
+                hideLoading();
             }
         };
 
