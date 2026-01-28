@@ -818,7 +818,7 @@
                     .eq('org_id', orgId);
                 console.log('Users:', users, usersError);
                 state.users = (users || []).map(u => ({
-                    id: u.id, username: u.username, password: u.password, phone: u.phone,
+                    id: u.id, email: u.email, password: u.password, phone: u.phone,
                     role: u.role, teamId: u.team_id, playerId: u.player_id,
                     createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
                 }));
@@ -1388,10 +1388,10 @@
         async function login(username, password) {
             showLoading();
             try {
-                // Find user by username and password
+                // Find user by email and password
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('username', username)
+                    .eq('email', username)
                     .eq('password', password)
                     .limit(1);
                 
@@ -1403,7 +1403,7 @@
                 
                 const userData = users[0];
                 const user = {
-                    id: userData.id, username: userData.username, password: userData.password,
+                    id: userData.id, email: userData.email, password: userData.password,
                     phone: userData.phone, role: userData.role, teamId: userData.team_id,
                     playerId: userData.player_id, createdAt: userData.created_at,
                     createdBy: userData.created_by, orgId: userData.org_id
@@ -1490,9 +1490,9 @@
         }
 
         async function createAccount(username, password, phone, role = null, teamId = null) {
-            if (!username || !password) { alert('Username and password required'); return false; }
+            if (!username || !password) { alert('Email and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
-            if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
+            if (state.users.find(u => u.email === username)) { alert('Email already exists'); return false; }
             if (!state.organization?.id) { alert('No organization loaded'); return false; }
 
             showLoading();
@@ -1501,7 +1501,7 @@
                 const finalRole = role || 'player';
                 
                 const { data, error } = await db.from('users').insert([{
-                    username, password, phone,
+                    email: username, password, phone,
                     role: finalRole,
                     team_id: teamId || null,
                     org_id: state.organization.id,
@@ -1511,7 +1511,7 @@
                 if (error) throw error;
 
                 const user = {
-                    id: data.id, username: data.username, password: data.password,
+                    id: data.id, email: data.email, password: data.password,
                     phone: data.phone, role: data.role, teamId: data.team_id,
                     createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
                 };
@@ -1533,7 +1533,7 @@
         async function deleteUser(userId) {
             if (userId === state.currentUser.id) { alert('Cannot delete yourself'); return; }
             const user = state.users.find(u => u.id === userId);
-            if (!confirm(`Delete user "${user.username}"?`)) return;
+            if (!confirm(`Delete user "${user.email}"?`)) return;
 
             showLoading();
             try {
@@ -1552,7 +1552,7 @@
             const user = state.users.find(u => u.id === userId);
             if (!user) return;
             
-            const newPassword = prompt(`Enter new password for "${user.username}":\n\n(Minimum 4 characters)`);
+            const newPassword = prompt(`Enter new password for "${user.email}":\n\n(Minimum 4 characters)`);
             if (!newPassword) return;
             if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return; }
             
@@ -1560,7 +1560,7 @@
             try {
                 await db.from('users').update({ password: newPassword }).eq('id', userId);
                 state.users = state.users.map(u => u.id === userId ? { ...u, password: newPassword } : u);
-                alert(`Password reset for "${user.username}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
+                alert(`Password reset for "${user.email}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
                 render();
             } catch (error) {
                 console.error('Error resetting password:', error);
@@ -1575,16 +1575,16 @@
             
             showLoading();
             try {
-                // Look up user by username and verify phone
+                // Look up user by email and verify phone
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('username', username)
+                    .eq('email', username)
                     .limit(1);
                 
                 if (error) throw error;
                 
                 if (!users || users.length === 0) {
-                    alert('Username not found');
+                    alert('Email not found');
                     return false;
                 }
                 
@@ -1663,7 +1663,7 @@
 
                 // Auto-assign captain to this team
                 if (captain) {
-                    const captainUser = state.users.find(u => u.username === captain);
+                    const captainUser = state.users.find(u => u.email === captain);
                     if (captainUser) {
                         await db.from('users').update({ team_id: newTeam.id }).eq('id', captainUser.id);
                         state.users = state.users.map(u => u.id === captainUser.id ? { ...u, teamId: newTeam.id } : u);
@@ -1736,14 +1736,14 @@
                 }
                 if (!captainUser) {
                     // Fallback: try to find user by matching username to player name
-                    captainUser = state.users.find(u => u.username === captainName);
+                    captainUser = state.users.find(u => u.email === captainName);
                 }
                 
                 // Update user's role to 'captain' if found and not already admin
                 if (captainUser && captainUser.role !== 'admin') {
                     await db.from('users').update({ role: 'captain' }).eq('id', captainUser.id);
                     state.users = state.users.map(u => u.id === captainUser.id ? { ...u, role: 'captain' } : u);
-                    console.log(`Updated ${captainUser.username} role to captain`);
+                    console.log(`Updated ${captainUser.email} role to captain`);
                 }
                 
                 render();
@@ -2789,7 +2789,7 @@
                         
                         <!-- Login Form -->
                         <div id="login-form" class="space-y-4">
-                            <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="email" id="login-username" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
@@ -2803,7 +2803,7 @@
                         <!-- Reset Password Form (hidden by default) -->
                         <div id="reset-form" class="space-y-4 hidden">
                             <p class="text-sm text-slate-600 text-center mb-4">Enter your username and phone number to reset your password.</p>
-                            <input type="text" id="reset-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="email" id="reset-username" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="tel" id="reset-phone" placeholder="Phone number on file" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <button onclick="handleSelfReset()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-lg hover:from-yellow-600 hover:to-orange-600">
                                 🔑 Reset Password
@@ -2867,7 +2867,7 @@
                         <div class="flex items-center gap-3">
                             <div class="text-right text-sm">
                                 <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.username}</div>
+                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.email}</div>
                             </div>
                             <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
                         </div>
@@ -5061,7 +5061,7 @@
             // Get captains not already assigned to a team
             const assignedCaptains = state.teams.map(t => t.captain).filter(c => c);
             const availableCaptains = state.users.filter(u => 
-                u.role === 'captain' && !assignedCaptains.includes(u.username)
+                u.role === 'captain' && !assignedCaptains.includes(u.email)
             );
             
             return `
@@ -5132,7 +5132,7 @@
                                 <label class="block text-sm font-bold mb-1">Captain</label>
                                 <select id="team-captain" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="">Select captain...</option>
-                                    ${availableCaptains.map(c => `<option value="${c.username}">${c.username}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
+                                    ${availableCaptains.map(c => `<option value="${c.email}">${c.email}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
                                 </select>
                                 ${availableCaptains.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ No available captains (create users or unassign existing)</p>' : ''}
                             </div>
@@ -5229,7 +5229,7 @@
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
                         <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
-                            <input type="text" id="new-username" placeholder="Username" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="email" id="new-username" placeholder="Email" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
                             ${isAdmin ? `
@@ -5257,7 +5257,7 @@
                             <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
                                 <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold">${user.username} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
+                                    <div class="font-bold">${user.email} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
                                     ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
                                 </div>
@@ -6077,7 +6077,7 @@
                     
                     if (userData && !error) {
                         const user = {
-                            id: userData.id, username: userData.username, password: userData.password,
+                            id: userData.id, email: userData.email, password: userData.password,
                             phone: userData.phone, role: userData.role, teamId: userData.team_id,
                             playerId: userData.player_id, createdAt: userData.created_at,
                             createdBy: userData.created_by, orgId: userData.org_id
