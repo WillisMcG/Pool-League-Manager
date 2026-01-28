@@ -321,12 +321,25 @@
     </footer>
 
     <script>
-        // Pricing configuration
-        const pricing = {
-            basic: { monthly: 5, annual: 54 },
-            pro: { monthly: 10, annual: 108 },
-            premium: { monthly: 20, annual: 216 }
+        // Stripe Price IDs
+        const STRIPE_PRICES = {
+            basic: {
+                monthly: 'price_1Suf0HDidS2jVuhadtJLgnLX',
+                annual: 'price_1Suf0HDidS2jVuhaYZ3GEQzW'
+            },
+            pro: {
+                monthly: 'price_1SufOZDidS2jVuha7RkjyRXi',
+                annual: 'price_1SufOZDidS2jVuhakiQNABxz'
+            },
+            premium: {
+                monthly: 'price_1SufPkDidS2jVuhatY2mAZT1',
+                annual: 'price_1SufPkDidS2jVuham4wwGraF'
+            }
         };
+        
+        // Supabase config (same as app.html)
+        const SUPABASE_URL = 'https://hprdhlletatixqysqegi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcmRobGxldGF0aXhxeXNxZWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTU1NDMsImV4cCI6MjA4MzY3MTU0M30._wrv6ONjG3JRkpA1FDPFkKMSn0bi6vhMiR0UZB40IRk';
         
         let billingPeriod = 'monthly';
         
@@ -369,13 +382,60 @@
             }
         }
         
-        function selectPlan(plan) {
-            // Store selected plan and redirect to checkout or app
-            const interval = billingPeriod === 'monthly' ? 'month' : 'year';
+        async function selectPlan(plan) {
+            const priceId = STRIPE_PRICES[plan][billingPeriod === 'monthly' ? 'monthly' : 'annual'];
             
-            // For now, redirect to app with plan parameter
-            // Later this will integrate with Stripe checkout
-            window.location.href = `app.html?plan=${plan}&interval=${interval}`;
+            // Show loading state
+            const buttons = document.querySelectorAll('button[onclick^="selectPlan"]');
+            buttons.forEach(btn => {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            });
+            
+            try {
+                // Call Supabase Edge Function to create checkout session
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        priceId: priceId,
+                        plan: plan,
+                        interval: billingPeriod,
+                        successUrl: window.location.origin + '/app.html?checkout=success',
+                        cancelUrl: window.location.origin + '/pricing.html?checkout=cancelled'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.url) {
+                    // Redirect to Stripe Checkout
+                    window.location.href = data.url;
+                } else if (data.error) {
+                    throw new Error(data.error);
+                } else {
+                    throw new Error('Failed to create checkout session');
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                alert('Unable to start checkout. Please make sure you are logged in and try again.\n\nError: ' + error.message);
+                
+                // Re-enable buttons
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                });
+            }
+        }
+        
+        // Check for checkout result on page load
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('checkout') === 'cancelled') {
+            // Could show a message that checkout was cancelled
+            console.log('Checkout was cancelled');
         }
     </script>
 </body>
