@@ -5103,7 +5103,7 @@
                                                         <option value="">Select player...</option>
                                                         ${availableHomePlayers.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <select onchange="state.matchups[${i}].homeGames = this.value; window.render();" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
+                                                    <select onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
                                                         <option value="">Games</option>
                                                         ${scoreOptions.map(n => `<option value="${n}" ${m.homeGames === String(n) || m.homeGames === n ? 'selected' : ''}>${n}</option>`).join('')}
                                                     </select>
@@ -5114,7 +5114,7 @@
                                                         <option value="">Select player...</option>
                                                         ${availableAwayPlayers.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <select onchange="state.matchups[${i}].awayGames = this.value; window.render();" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
+                                                    <select onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
                                                         <option value="">Games</option>
                                                         ${scoreOptions.map(n => `<option value="${n}" ${m.awayGames === String(n) || m.awayGames === n ? 'selected' : ''}>${n}</option>`).join('')}
                                                     </select>
@@ -6719,7 +6719,7 @@
         window.updateEditMatchup = function(gameIndex, field, value) {
             if (!state.editHistoryMatchups) return;
             state.editHistoryMatchups[gameIndex][field] = value;
-            render();
+            // Don't call render() - it resets scroll position
         };
         
         window.saveHistoryEdit = async function(matchId) {
