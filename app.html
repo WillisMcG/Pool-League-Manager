@@ -135,11 +135,6 @@
             // Organization (multi-tenant)
             organization: null,
             
-            // Multi-league support
-            userLeagues: [],        // All leagues user has access to
-            selectedLeague: null,   // Currently selected league
-            showLeagueSelector: false, // Show league picker modal
-            
             // Core data
             users: [],
             teams: [],
@@ -163,9 +158,6 @@
             editingStandings: false,
             playerStatsAdjustments: {}, // { playerId: { matchWins: +/-, matchLosses: +/-, gamesWon: +/-, gamesLost: +/- } }
             editingPlayerStats: false,
-            editingUser: null, // User being edited { id, firstName, lastName, email, phone, role, teamId }
-            showInviteResult: null, // { user, inviteUrl } - shown after creating user
-            inviteToken: null, // Token from URL for account setup
             // Schedule creation mode: null, 'choose', 'manual', 'auto'
             scheduleMode: null,
             // Auto-generate sub-mode: null, 'roundrobin', 'customrr', 'csv'
@@ -189,30 +181,11 @@
             weekMatches: [],
             selectedMatch: '',
             selectedTeam: '',
-            matchups: [], // Will be populated based on season's gamesPerMatch
+            matchups: Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' })),
             initialized: false,
             // Play days for manual schedule entry (stored locally)
-            playDays: JSON.parse(localStorage.getItem('plm_playDays') || '[2]'), // Default Tuesday (0=Sun, 1=Mon, 2=Tue, etc.)
-            // History editing state
-            editingHistoryMatch: null,
-            editHistoryMatchups: null
+            playDays: JSON.parse(localStorage.getItem('plm_playDays') || '[2]') // Default Tuesday (0=Sun, 1=Mon, 2=Tue, etc.)
         };
-        
-        // Helper to create empty matchups array based on season settings
-        function createEmptyMatchups() {
-            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
-            return Array(gamesPerMatch).fill(null).map(() => ({ 
-                homePlayer: '', 
-                awayPlayer: '', 
-                homeGames: '', 
-                awayGames: '' 
-            }));
-        }
-        
-        // Reset matchups to empty based on current season
-        function resetMatchups() {
-            state.matchups = createEmptyMatchups();
-        }
 
         // ============================================
         // MANUAL ENTRY HELPER FUNCTIONS
@@ -234,6 +207,95 @@
                 days.sort((a, b) => a - b);
             }
             saveManualPlayDays(days);
+        }
+        
+        // ============================================
+        // TIER ACCESS CONTROL HELPERS
+        // ============================================
+        
+        // Tier limits configuration
+        const TIER_LIMITS = {
+            trial: { teams: 20, playerRankings: 20, historyYears: 3, photoUpload: true, sms: false, hallOfFame: false, headToHead: false, trends: false },
+            basic: { teams: 10, playerRankings: 5, historyYears: 0, photoUpload: false, sms: false, hallOfFame: false, headToHead: false, trends: false },
+            pro: { teams: 20, playerRankings: 20, historyYears: 3, photoUpload: true, sms: false, hallOfFame: false, headToHead: false, trends: false },
+            premium: { teams: Infinity, playerRankings: Infinity, historyYears: Infinity, photoUpload: true, sms: true, hallOfFame: true, headToHead: true, trends: true }
+        };
+        
+        function getTierLimits() {
+            const tier = state.organization?.subscriptionTier || 'trial';
+            const status = state.organization?.subscriptionStatus || 'trial';
+            
+            // If trial expired, treat as basic (most restrictive until they pay)
+            if (status === 'expired') {
+                return TIER_LIMITS.basic;
+            }
+            
+            return TIER_LIMITS[tier] || TIER_LIMITS.trial;
+        }
+        
+        function getTeamLimit() {
+            return getTierLimits().teams;
+        }
+        
+        function canAddTeam() {
+            const limit = getTeamLimit();
+            return state.teams.length < limit;
+        }
+        
+        function getTeamLimitWarning(newTeamCount) {
+            const tier = state.organization?.subscriptionTier || 'trial';
+            const status = state.organization?.subscriptionStatus || 'trial';
+            
+            // During trial, warn when exceeding tier limits
+            if (status === 'trial') {
+                if (newTeamCount > 20) {
+                    return { level: 'error', message: `You have ${newTeamCount} teams. Premium plan ($20/mo) is required for more than 20 teams.` };
+                } else if (newTeamCount > 10) {
+                    return { level: 'warning', message: `You have ${newTeamCount} teams. Pro plan ($10/mo) or higher is required for more than 10 teams.` };
+                }
+            } else {
+                // Active subscription - enforce limits
+                const limit = getTeamLimit();
+                if (newTeamCount > limit) {
+                    if (tier === 'basic') {
+                        return { level: 'error', message: `Basic plan allows up to 10 teams. Upgrade to Pro ($10/mo) for up to 20 teams.` };
+                    } else if (tier === 'pro') {
+                        return { level: 'error', message: `Pro plan allows up to 20 teams. Upgrade to Premium ($20/mo) for unlimited teams.` };
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function canAccessFeature(feature) {
+            return getTierLimits()[feature] === true;
+        }
+        
+        function getPlayerRankingsLimit() {
+            return getTierLimits().playerRankings;
+        }
+        
+        function getHistoryYearsLimit() {
+            return getTierLimits().historyYears;
+        }
+        
+        function canViewSeason(season) {
+            const yearsLimit = getHistoryYearsLimit();
+            if (yearsLimit === Infinity) return true;
+            if (yearsLimit === 0) {
+                // Only current season
+                return season.id === state.currentSeason?.id;
+            }
+            
+            // Check if season is within years limit
+            const seasonDate = new Date(season.createdAt);
+            const cutoffDate = new Date();
+            cutoffDate.setFullYear(cutoffDate.getFullYear() - yearsLimit);
+            return seasonDate >= cutoffDate;
+        }
+        
+        function getVisibleSeasons() {
+            return state.seasons.filter(s => canViewSeason(s));
         }
         
         function getNextWeekNumber() {
@@ -743,9 +805,7 @@
                     id: s.id, name: s.name, startDate: s.start_date, endDate: s.end_date,
                     isActive: s.is_active, isArchived: s.is_archived || false, createdAt: s.created_at, orgId: s.org_id,
                     standingsAdjustments: s.standings_adjustments || {},
-                    playerStatsAdjustments: s.player_stats_adjustments || {},
-                    gamesPerMatch: s.games_per_match || 5,
-                    raceTo: s.race_to || 2
+                    playerStatsAdjustments: s.player_stats_adjustments || {}
                 }));
                 
                 // Set current season to active non-archived one, or most recent non-archived
@@ -758,11 +818,9 @@
                     .eq('org_id', orgId);
                 console.log('Users:', users, usersError);
                 state.users = (users || []).map(u => ({
-                    id: u.id, email: u.email, password: u.password, phone: u.phone,
-                    firstName: u.first_name || '', lastName: u.last_name || '',
+                    id: u.id, username: u.username, password: u.password, phone: u.phone,
                     role: u.role, teamId: u.team_id, playerId: u.player_id,
-                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id,
-                    inviteToken: u.invite_token, status: u.status || 'active'
+                    createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
                 }));
 
                 const { data: teams, error: teamsError } = await db.from('teams')
@@ -1003,21 +1061,14 @@
             
             showLoading();
             try {
-                // Get settings from most recent season (if any)
-                const previousSeason = state.seasons[0]; // Already sorted by created_at desc
-                const gamesPerMatch = previousSeason?.gamesPerMatch || 5;
-                const raceTo = previousSeason?.raceTo || 2;
-                
                 // Deactivate all other seasons for this org
                 await db.from('seasons').update({ is_active: false }).eq('org_id', state.organization.id);
                 
-                // Create new active season with copied settings
+                // Create new active season
                 const { data, error } = await db.from('seasons').insert([{
                     name: name.trim(),
                     is_active: true,
-                    org_id: state.organization.id,
-                    games_per_match: gamesPerMatch,
-                    race_to: raceTo
+                    org_id: state.organization.id
                 }]).select().single();
                 
                 if (error) throw error;
@@ -1029,9 +1080,7 @@
                     endDate: data.end_date,
                     isActive: data.is_active,
                     createdAt: data.created_at,
-                    orgId: data.org_id,
-                    gamesPerMatch: data.games_per_match || 5,
-                    raceTo: data.race_to || 2
+                    orgId: data.org_id
                 };
                 
                 state.seasons = [newSeason, ...state.seasons.map(s => ({ ...s, isActive: false }))];
@@ -1336,21 +1385,13 @@
         // ============================================
         // AUTH FUNCTIONS
         // ============================================
-        
-        // Helper function to get display name for a user
-        function getUserDisplayName(user) {
-            if (!user) return 'Unknown';
-            const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
-            return fullName || user.email || 'Unknown';
-        }
-        
-        async function login(email, password) {
+        async function login(username, password) {
             showLoading();
             try {
-                // Find user by email and password
+                // Find user by username and password
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('email', email)
+                    .eq('username', username)
                     .eq('password', password)
                     .limit(1);
                 
@@ -1362,12 +1403,42 @@
                 
                 const userData = users[0];
                 const user = {
-                    id: userData.id, email: userData.email, password: userData.password,
-                    firstName: userData.first_name || '', lastName: userData.last_name || '',
+                    id: userData.id, username: userData.username, password: userData.password,
                     phone: userData.phone, role: userData.role, teamId: userData.team_id,
                     playerId: userData.player_id, createdAt: userData.created_at,
                     createdBy: userData.created_by, orgId: userData.org_id
                 };
+                
+                // Load the user's organization
+                if (user.orgId) {
+                    const { data: org, error: orgError } = await db.from('organizations')
+                        .select('*')
+                        .eq('id', user.orgId)
+                        .single();
+                    
+                    if (orgError) throw orgError;
+                    
+                    state.organization = {
+                        id: org.id,
+                        name: org.name,
+                        slug: org.slug,
+                        subscriptionStatus: org.subscription_status,
+                        subscriptionTier: org.subscription_tier,
+                        billingInterval: org.billing_interval,
+                        trialEndsAt: org.trial_ends_at,
+                        maxTeams: org.max_teams,
+                        maxUsers: org.max_users,
+                        maxSeasons: org.max_seasons
+                    };
+                    
+                    // Check subscription status
+                    const isValid = checkSubscriptionValid();
+                    if (!isValid) {
+                        hideLoading();
+                        alert('Your subscription has expired. Please contact your administrator to renew.');
+                        return false;
+                    }
+                }
                 
                 state.currentUser = user;
                 localStorage.setItem('plm_session', JSON.stringify({ id: user.id }));
@@ -1382,30 +1453,8 @@
                     console.log('Login tracking not available:', e);
                 }
                 
-                // Check for league memberships (new multi-league system)
-                const leagues = await getUserLeagues(user.id);
-                
-                if (leagues.length === 0) {
-                    // Fall back to legacy org_id method
-                    if (user.orgId) {
-                        await loadOrganizationAndData(user.orgId);
-                    } else {
-                        hideLoading();
-                        alert('No league access found. Contact your league administrator.');
-                        return false;
-                    }
-                } else if (leagues.length === 1) {
-                    // Auto-select the only league
-                    state.userLeagues = leagues;
-                    await selectLeague(leagues[0]);
-                } else {
-                    // Multiple leagues - show selector
-                    state.userLeagues = leagues;
-                    state.showLeagueSelector = true;
-                    hideLoading();
-                    render();
-                    return true; // Login successful, but need league selection
-                }
+                // Load all org data
+                await loadAllData();
                 
                 render();
                 return true;
@@ -1414,194 +1463,6 @@
                 hideLoading();
                 return false;
             }
-        }
-        
-        // Get all leagues a user has access to
-        async function getUserLeagues(userId) {
-            try {
-                // First try the new league_memberships table
-                const { data: memberships, error } = await db.from('league_memberships')
-                    .select(`
-                        id,
-                        league_id,
-                        team_id,
-                        role,
-                        is_active,
-                        leagues:league_id (
-                            id,
-                            name,
-                            organization_id,
-                            organizations:organization_id (
-                                id,
-                                name,
-                                slug,
-                                subscription_status,
-                                subscription_tier
-                            )
-                        ),
-                        teams:team_id (
-                            id,
-                            name
-                        )
-                    `)
-                    .eq('user_id', userId)
-                    .eq('is_active', true);
-                
-                if (error) {
-                    console.log('League memberships table not found, using legacy method');
-                    return await getUserLeaguesLegacy(userId);
-                }
-                
-                if (!memberships || memberships.length === 0) {
-                    return await getUserLeaguesLegacy(userId);
-                }
-                
-                return memberships.map(m => ({
-                    membershipId: m.id,
-                    leagueId: m.leagues?.id || m.league_id,
-                    leagueName: m.leagues?.name || 'Unknown League',
-                    orgId: m.leagues?.organization_id,
-                    orgName: m.leagues?.organizations?.name || 'Unknown Organization',
-                    teamId: m.team_id,
-                    teamName: m.teams?.name || null,
-                    role: m.role,
-                    subscriptionStatus: m.leagues?.organizations?.subscription_status
-                }));
-            } catch (e) {
-                console.log('Error loading league memberships:', e);
-                return await getUserLeaguesLegacy(userId);
-            }
-        }
-        
-        // Legacy method: get leagues from user's org_id
-        async function getUserLeaguesLegacy(userId) {
-            const user = state.users.find(u => u.id === userId) || state.currentUser;
-            if (!user?.orgId) return [];
-            
-            try {
-                // Get all leagues in user's org
-                const { data: leagues } = await db.from('leagues')
-                    .select('*, organizations:organization_id(*)')
-                    .eq('organization_id', user.orgId);
-                
-                if (!leagues || leagues.length === 0) {
-                    // No leagues table, treat org as single league
-                    const { data: org } = await db.from('organizations')
-                        .select('*')
-                        .eq('id', user.orgId)
-                        .single();
-                    
-                    if (org) {
-                        return [{
-                            leagueId: null, // No separate league, just org
-                            leagueName: org.name,
-                            orgId: org.id,
-                            orgName: org.name,
-                            teamId: user.teamId,
-                            teamName: null,
-                            role: user.role,
-                            subscriptionStatus: org.subscription_status,
-                            isLegacy: true
-                        }];
-                    }
-                }
-                
-                return (leagues || []).map(l => ({
-                    leagueId: l.id,
-                    leagueName: l.name,
-                    orgId: l.organization_id,
-                    orgName: l.organizations?.name || 'Unknown',
-                    teamId: user.teamId,
-                    teamName: null,
-                    role: user.role,
-                    subscriptionStatus: l.organizations?.subscription_status
-                }));
-            } catch (e) {
-                console.log('Error in legacy league lookup:', e);
-                return [];
-            }
-        }
-        
-        // Select a league and load its data
-        async function selectLeague(league) {
-            showLoading();
-            try {
-                state.selectedLeague = league;
-                state.showLeagueSelector = false;
-                
-                // Update user's team context if specified in membership
-                if (league.teamId && state.currentUser) {
-                    state.currentUser.teamId = league.teamId;
-                }
-                
-                // Update user's role context if specified
-                if (league.role && state.currentUser) {
-                    // Map membership role to app role
-                    if (league.role === 'captain') {
-                        state.currentUser.role = 'captain';
-                    } else if (league.role === 'player') {
-                        state.currentUser.role = 'player';
-                    }
-                    // admin/owner roles preserved from user record
-                }
-                
-                // Load organization and all data
-                await loadOrganizationAndData(league.orgId, league.leagueId);
-                
-                // Save league selection for session restore
-                localStorage.setItem('plm_selected_league', JSON.stringify({
-                    leagueId: league.leagueId,
-                    orgId: league.orgId
-                }));
-                
-                render();
-            } catch (error) {
-                console.error('Error selecting league:', error);
-                alert('Error loading league data');
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        // Load organization and optionally filter by league
-        async function loadOrganizationAndData(orgId, leagueId = null) {
-            const { data: org, error: orgError } = await db.from('organizations')
-                .select('*')
-                .eq('id', orgId)
-                .single();
-            
-            if (orgError) throw orgError;
-            
-            state.organization = {
-                id: org.id,
-                name: org.name,
-                slug: org.slug,
-                subscriptionStatus: org.subscription_status,
-                subscriptionTier: org.subscription_tier,
-                billingInterval: org.billing_interval,
-                trialEndsAt: org.trial_ends_at,
-                maxTeams: org.max_teams,
-                maxUsers: org.max_users,
-                maxSeasons: org.max_seasons
-            };
-            
-            // Store league filter if specified
-            if (leagueId) {
-                state.selectedLeague = state.selectedLeague || {};
-                state.selectedLeague.leagueId = leagueId;
-            }
-            
-            // Check subscription status
-            const isValid = checkSubscriptionValid();
-            if (!isValid) {
-                hideLoading();
-                alert('Your subscription has expired. Please contact your administrator to renew.');
-                return false;
-            }
-            
-            // Load all org data
-            await loadAllData();
-            return true;
         }
         
         function checkSubscriptionValid() {
@@ -1623,211 +1484,15 @@
 
         function logout() {
             state.currentUser = null;
-            state.userLeagues = [];
-            state.selectedLeague = null;
-            state.showLeagueSelector = false;
             state.activeTab = 'schedule';
             localStorage.removeItem('plm_session');
-            localStorage.removeItem('plm_selected_league');
             render();
         }
 
-        // Generate a random invite token
-        function generateInviteToken() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-            let token = '';
-            for (let i = 0; i < 32; i++) {
-                token += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return token;
-        }
-        
-        // Get the base URL for invite links
-        function getInviteUrl(token) {
-            const baseUrl = window.location.origin + window.location.pathname;
-            return baseUrl + '?invite=' + token;
-        }
-        
-        // Send invite email via Edge Function
-        async function sendInviteEmail(user, inviteUrl) {
-            try {
-                const response = await fetch(`${SUPABASE_URL}/functions/v1/send-invite-email`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                    },
-                    body: JSON.stringify({
-                        to: user.email,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        leagueName: state.leagueName || 'Pool League',
-                        inviteUrl: inviteUrl
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (!result.success) {
-                    console.error('Failed to send invite email:', result.error);
-                    return false;
-                }
-                
-                console.log('Invite email sent:', result.messageId);
-                return true;
-            } catch (error) {
-                console.error('Error sending invite email:', error);
-                return false;
-            }
-        }
-        
-        // Create a new user with invite token (no password required initially)
-        async function inviteUser(email, phone, role = 'player', teamId = null, firstName = '', lastName = '') {
-            if (!email) { alert('Email is required'); return null; }
-            if (!phone || phone.replace(/\D/g, '').length < 10) { alert('Valid phone number required (10+ digits)'); return null; }
-            if (state.users.find(u => u.email === email)) { alert('Email already exists'); return null; }
-            if (!state.organization?.id) { alert('No organization loaded'); return null; }
-
-            showLoading();
-            try {
-                const inviteToken = generateInviteToken();
-                
-                const { data, error } = await db.from('users').insert([{
-                    email, 
-                    phone,
-                    first_name: firstName || null,
-                    last_name: lastName || null,
-                    role: role || 'player',
-                    team_id: teamId || null,
-                    org_id: state.organization.id,
-                    created_by: state.currentUser?.id || null,
-                    invite_token: inviteToken,
-                    status: 'pending'
-                }]).select().single();
-
-                if (error) throw error;
-
-                const user = {
-                    id: data.id, 
-                    email: data.email, 
-                    firstName: data.first_name || '', 
-                    lastName: data.last_name || '',
-                    phone: data.phone, 
-                    role: data.role, 
-                    teamId: data.team_id,
-                    createdAt: data.created_at, 
-                    createdBy: data.created_by, 
-                    orgId: data.org_id,
-                    inviteToken: data.invite_token,
-                    status: data.status || 'pending'
-                };
-
-                state.users = [...state.users, user];
-                
-                const inviteUrl = getInviteUrl(inviteToken);
-                
-                // Send invite email (don't block on failure)
-                const emailSent = await sendInviteEmail(user, inviteUrl);
-                
-                render();
-                
-                return {
-                    user,
-                    inviteUrl,
-                    emailSent
-                };
-            } catch (error) {
-                console.error('Error inviting user:', error);
-                alert('Error inviting user: ' + error.message);
-                return null;
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        // Resend invite - generates new token and sends email
-        async function resendInvite(userId) {
-            const user = state.users.find(u => u.id === userId);
-            if (!user) return null;
-            
-            showLoading();
-            try {
-                const newToken = generateInviteToken();
-                
-                await db.from('users').update({
-                    invite_token: newToken,
-                    status: 'pending'
-                }).eq('id', userId);
-                
-                // Update local state
-                const updatedUser = { ...user, inviteToken: newToken, status: 'pending' };
-                state.users = state.users.map(u => u.id === userId ? updatedUser : u);
-                
-                const inviteUrl = getInviteUrl(newToken);
-                
-                // Send invite email
-                await sendInviteEmail(updatedUser, inviteUrl);
-                
-                render();
-                return inviteUrl;
-            } catch (error) {
-                console.error('Error resending invite:', error);
-                alert('Error resending invite: ' + error.message);
-                return null;
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        // Complete invite - set password and activate account
-        async function completeInvite(token, password) {
-            if (!token) { alert('Invalid invite link'); return null; }
-            if (!password || password.length < 4) { alert('Password must be at least 4 characters'); return null; }
-            
-            showLoading();
-            try {
-                // Find user by token
-                const { data: users, error: findError } = await db.from('users')
-                    .select('*')
-                    .eq('invite_token', token)
-                    .limit(1);
-                
-                if (findError) throw findError;
-                if (!users || users.length === 0) {
-                    alert('Invalid or expired invite link. Please contact your league administrator.');
-                    return null;
-                }
-                
-                const userData = users[0];
-                
-                // Update user with password and clear token
-                const { error: updateError } = await db.from('users').update({
-                    password: password,
-                    invite_token: null,
-                    status: 'active'
-                }).eq('id', userData.id);
-                
-                if (updateError) throw updateError;
-                
-                alert('Account activated! You can now sign in with your email and password.');
-                return {
-                    email: userData.email,
-                    orgId: userData.org_id
-                };
-            } catch (error) {
-                console.error('Error completing invite:', error);
-                alert('Error setting up account: ' + error.message);
-                return null;
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // Legacy createAccount for backwards compatibility and admin self-registration
-        async function createAccount(email, password, phone, role = null, teamId = null, firstName = '', lastName = '') {
-            if (!email || !password) { alert('Email and password required'); return false; }
+        async function createAccount(username, password, phone, role = null, teamId = null) {
+            if (!username || !password) { alert('Username and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
-            if (state.users.find(u => u.email === email)) { alert('Email already exists'); return false; }
+            if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
             if (!state.organization?.id) { alert('No organization loaded'); return false; }
 
             showLoading();
@@ -1836,30 +1501,24 @@
                 const finalRole = role || 'player';
                 
                 const { data, error } = await db.from('users').insert([{
-                    email, password, phone,
-                    first_name: firstName || null,
-                    last_name: lastName || null,
+                    username, password, phone,
                     role: finalRole,
                     team_id: teamId || null,
                     org_id: state.organization.id,
-                    created_by: state.currentUser?.id || null,
-                    status: 'active'
+                    created_by: state.currentUser?.id || null
                 }]).select().single();
 
                 if (error) throw error;
 
                 const user = {
-                    id: data.id, email: data.email, password: data.password,
-                    firstName: data.first_name || '', lastName: data.last_name || '',
+                    id: data.id, username: data.username, password: data.password,
                     phone: data.phone, role: data.role, teamId: data.team_id,
-                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id,
-                    status: data.status || 'active'
+                    createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
                 };
 
                 state.users = [...state.users, user];
 
-                const displayName = [firstName, lastName].filter(Boolean).join(' ') || email;
-                alert('User "' + displayName + '" created as ' + finalRole + '!');
+                alert('User "' + username + '" created as ' + finalRole + '!');
                 render();
                 return true;
             } catch (error) {
@@ -1874,7 +1533,7 @@
         async function deleteUser(userId) {
             if (userId === state.currentUser.id) { alert('Cannot delete yourself'); return; }
             const user = state.users.find(u => u.id === userId);
-            if (!confirm(`Delete user "${getUserDisplayName(user)}"?`)) return;
+            if (!confirm(`Delete user "${user.username}"?`)) return;
 
             showLoading();
             try {
@@ -1893,8 +1552,7 @@
             const user = state.users.find(u => u.id === userId);
             if (!user) return;
             
-            const displayName = getUserDisplayName(user);
-            const newPassword = prompt(`Enter new password for "${displayName}":\n\n(Minimum 4 characters)`);
+            const newPassword = prompt(`Enter new password for "${user.username}":\n\n(Minimum 4 characters)`);
             if (!newPassword) return;
             if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return; }
             
@@ -1902,7 +1560,7 @@
             try {
                 await db.from('users').update({ password: newPassword }).eq('id', userId);
                 state.users = state.users.map(u => u.id === userId ? { ...u, password: newPassword } : u);
-                alert(`Password reset for "${displayName}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
+                alert(`Password reset for "${user.username}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
                 render();
             } catch (error) {
                 console.error('Error resetting password:', error);
@@ -1911,134 +1569,22 @@
                 hideLoading();
             }
         }
-        
-        // Open edit modal for a user
-        function editUser(userId) {
-            const user = state.users.find(u => u.id === userId);
-            if (!user) return;
-            
-            // Check permissions: admin can edit anyone, captain can edit their team members
-            const isAdmin = state.currentUser.role === 'admin';
-            const isCaptain = state.currentUser.role === 'captain';
-            const isOwnTeam = user.teamId === state.currentUser.teamId;
-            const isSelf = user.id === state.currentUser.id;
-            
-            if (!isAdmin && !isSelf && !(isCaptain && isOwnTeam)) {
-                alert('You do not have permission to edit this user');
-                return;
-            }
-            
-            state.editingUser = {
-                id: user.id,
-                firstName: user.firstName || '',
-                lastName: user.lastName || '',
-                email: user.email || '',
-                phone: user.phone || '',
-                role: user.role || 'player',
-                teamId: user.teamId || ''
-            };
-            render();
-        }
-        
-        // Close edit modal
-        function cancelEditUser() {
-            state.editingUser = null;
-            render();
-        }
-        
-        // Save edited user
-        async function saveUser() {
-            const edit = state.editingUser;
-            if (!edit) return;
-            
-            // Validation
-            if (!edit.email) { alert('Email is required'); return; }
-            if (!edit.phone || edit.phone.replace(/\D/g, '').length < 10) { 
-                alert('Valid phone number required (10+ digits)'); return; 
-            }
-            
-            // Check if email changed and is unique
-            const existingUser = state.users.find(u => u.email === edit.email && u.id !== edit.id);
-            if (existingUser) {
-                alert('Email already in use by another user');
-                return;
-            }
-            
-            showLoading();
-            try {
-                const updateData = {
-                    first_name: edit.firstName || null,
-                    last_name: edit.lastName || null,
-                    email: edit.email,
-                    phone: edit.phone,
-                    role: edit.role,
-                    team_id: edit.teamId || null
-                };
-                
-                await db.from('users').update(updateData).eq('id', edit.id);
-                
-                // Update local state
-                state.users = state.users.map(u => {
-                    if (u.id === edit.id) {
-                        return {
-                            ...u,
-                            firstName: edit.firstName,
-                            lastName: edit.lastName,
-                            email: edit.email,
-                            phone: edit.phone,
-                            role: edit.role,
-                            teamId: edit.teamId || null
-                        };
-                    }
-                    return u;
-                });
-                
-                // If editing self, update currentUser too
-                if (edit.id === state.currentUser.id) {
-                    state.currentUser = {
-                        ...state.currentUser,
-                        firstName: edit.firstName,
-                        lastName: edit.lastName,
-                        email: edit.email,
-                        phone: edit.phone,
-                        role: edit.role,
-                        teamId: edit.teamId || null
-                    };
-                }
-                
-                state.editingUser = null;
-                alert('User updated successfully!');
-                render();
-            } catch (error) {
-                console.error('Error updating user:', error);
-                alert('Error updating user: ' + error.message);
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        // Update editing user field
-        function updateEditingUser(field, value) {
-            if (!state.editingUser) return;
-            state.editingUser[field] = value;
-            render();
-        }
 
-        async function selfServiceReset(email, phone) {
-            if (!email || !phone) { alert('Email and phone required'); return false; }
+        async function selfServiceReset(username, phone) {
+            if (!username || !phone) { alert('Username and phone required'); return false; }
             
             showLoading();
             try {
-                // Look up user by email and verify phone
+                // Look up user by username and verify phone
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('email', email)
+                    .eq('username', username)
                     .limit(1);
                 
                 if (error) throw error;
                 
                 if (!users || users.length === 0) {
-                    alert('Email not found');
+                    alert('Username not found');
                     return false;
                 }
                 
@@ -2089,6 +1635,15 @@
         async function createTeam(name, venue, captain) {
             if (!name) { alert('Team name required'); return false; }
             if (!state.organization?.id) { alert('No organization loaded'); return false; }
+            
+            // Check tier limits
+            const newTeamCount = state.teams.length + 1;
+            const warning = getTeamLimitWarning(newTeamCount);
+            
+            if (warning?.level === 'error') {
+                alert(warning.message);
+                return false;
+            }
 
             showLoading();
             try {
@@ -2106,9 +1661,9 @@
                 
                 state.teams = [...state.teams, newTeam];
 
-                // Auto-assign captain to this team (captain here is an email)
+                // Auto-assign captain to this team
                 if (captain) {
-                    const captainUser = state.users.find(u => u.email === captain);
+                    const captainUser = state.users.find(u => u.username === captain);
                     if (captainUser) {
                         await db.from('users').update({ team_id: newTeam.id }).eq('id', captainUser.id);
                         state.users = state.users.map(u => u.id === captainUser.id ? { ...u, teamId: newTeam.id } : u);
@@ -2116,7 +1671,14 @@
                 }
 
                 state.showCreateTeam = false;
-                alert('Team "' + name + '" created!');
+                
+                // Show warning if they're exceeding tier limits during trial
+                if (warning?.level === 'warning') {
+                    alert('Team "' + name + '" created!\n\n⚠️ ' + warning.message);
+                } else {
+                    alert('Team "' + name + '" created!');
+                }
+                
                 render();
                 return true;
             } catch (error) {
@@ -2167,21 +1729,21 @@
                 // Find the player object to get their ID
                 const player = team.players.find(p => p.name === captainName);
                 
-                // Find the corresponding user (by playerId or matching email/name)
+                // Find the corresponding user (by playerId or matching username)
                 let captainUser = null;
                 if (player) {
                     captainUser = state.users.find(u => u.playerId === player.id);
                 }
                 if (!captainUser) {
-                    // Fallback: try to find user by matching email or name
-                    captainUser = state.users.find(u => u.email === captainName || getUserDisplayName(u) === captainName);
+                    // Fallback: try to find user by matching username to player name
+                    captainUser = state.users.find(u => u.username === captainName);
                 }
                 
                 // Update user's role to 'captain' if found and not already admin
                 if (captainUser && captainUser.role !== 'admin') {
                     await db.from('users').update({ role: 'captain' }).eq('id', captainUser.id);
                     state.users = state.users.map(u => u.id === captainUser.id ? { ...u, role: 'captain' } : u);
-                    console.log(`Updated ${getUserDisplayName(captainUser)} role to captain`);
+                    console.log(`Updated ${captainUser.username} role to captain`);
                 }
                 
                 render();
@@ -2815,52 +2377,19 @@
             const matchups = state.matchups;
             const seasonId = state.currentSeason?.id;
             const isAdmin = state.currentUser?.role === 'admin';
-            const raceTo = state.currentSeason?.raceTo || 2;
-            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
 
             // Admin only needs match selected, captains need both match and team
             if (!sel) { alert('Select a match'); return; }
             if (!isAdmin && !team) { alert('Select your team'); return; }
             if (!seasonId) { alert('No season selected'); return; }
-            
-            // Ensure we have the right number of games
-            if (matchups.length !== gamesPerMatch) {
-                alert(`Expected ${gamesPerMatch} games but found ${matchups.length}. Please refresh and try again.`);
-                return;
-            }
 
-            // Validate each game is complete
             for (let i = 0; i < matchups.length; i++) {
                 const m = matchups[i];
-                
-                // Check players are selected
-                if (!m.homePlayer) { 
-                    alert(`Game ${i + 1}: Select the home team player`); 
-                    return; 
-                }
-                if (!m.awayPlayer) { 
-                    alert(`Game ${i + 1}: Select the away team player`); 
-                    return; 
-                }
-                
-                // Check scores are selected (not empty string)
-                if (m.homeGames === '' || m.homeGames === null || m.homeGames === undefined) {
-                    alert(`Game ${i + 1}: Select games won for home player`);
-                    return;
-                }
-                if (m.awayGames === '' || m.awayGames === null || m.awayGames === undefined) {
-                    alert(`Game ${i + 1}: Select games won for away player`);
-                    return;
-                }
-                
-                const hg = parseInt(m.homeGames);
-                const ag = parseInt(m.awayGames);
-                
-                // Validate: exactly one player must reach raceTo, other must be less
-                const validScore = (hg === raceTo && ag < raceTo) || (ag === raceTo && hg < raceTo);
-                if (!validScore) {
-                    alert(`Game ${i + 1}: Invalid score (${hg}-${ag}). One player must win ${raceTo}, other must have less than ${raceTo}.`); 
-                    return;
+                const hg = parseInt(m.homeGames) || 0;
+                const ag = parseInt(m.awayGames) || 0;
+                if (!m.homePlayer || !m.awayPlayer) { alert(`Game ${i + 1}: Select both players`); return; }
+                if (!((hg === 2 && ag <= 1) || (ag === 2 && hg <= 1))) {
+                    alert(`Game ${i + 1}: One player must win 2, other 0 or 1`); return;
                 }
             }
 
@@ -2964,7 +2493,7 @@
 
                 state.selectedMatch = '';
                 state.selectedTeam = '';
-                resetMatchups();
+                state.matchups = Array(5).fill(null).map(() => ({ homePlayer: '', awayPlayer: '', homeGames: '', awayGames: '' }));
                 render();
             } catch (error) {
                 console.error('Error submitting scores:', error);
@@ -3254,53 +2783,27 @@
                         <div class="text-center mb-8">
                             <div class="text-6xl mb-4">🏆</div>
                             <h1 class="text-4xl font-black text-slate-800 mb-2">Pool League</h1>
-                            <p class="text-slate-600" id="form-title">Sign In</p>
+                            <p class="text-slate-600">Sign In</p>
                             <p class="text-xs text-emerald-600 mt-2">☁️ Cloud-Synced</p>
                         </div>
                         
                         <!-- Login Form -->
                         <div id="login-form" class="space-y-4">
-                            <input type="email" id="login-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
                                 Sign In
                             </button>
-                            <div class="flex justify-between text-sm">
-                                <button onclick="showResetForm()" class="text-emerald-600 hover:text-emerald-800">
-                                    Forgot Password?
-                                </button>
-                                <button onclick="showSignupForm()" class="text-blue-600 hover:text-blue-800 font-semibold">
-                                    Create Account →
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Sign Up Form (hidden by default) -->
-                        <div id="signup-form" class="space-y-4 hidden">
-                            <p class="text-sm text-slate-600 text-center mb-4">Create a new league organization</p>
-                            <input type="text" id="signup-org-name" placeholder="Organization / League Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="text" id="signup-firstname" placeholder="First Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                                <input type="text" id="signup-lastname" placeholder="Last Name" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            </div>
-                            <input type="email" id="signup-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <input type="tel" id="signup-phone" placeholder="Phone" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <input type="password" id="signup-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <input type="password" id="signup-password2" placeholder="Confirm Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            <div id="signup-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
-                            <button onclick="handleSignup()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-lg hover:from-blue-700 hover:to-indigo-700">
-                                🚀 Create Organization
-                            </button>
-                            <button onclick="showLoginForm()" class="w-full text-sm text-slate-600 hover:text-slate-800 py-2">
-                                ← Back to Login
+                            <button onclick="showResetForm()" class="w-full text-sm text-emerald-600 hover:text-emerald-800 py-2">
+                                Forgot Password?
                             </button>
                         </div>
                         
                         <!-- Reset Password Form (hidden by default) -->
                         <div id="reset-form" class="space-y-4 hidden">
-                            <p class="text-sm text-slate-600 text-center mb-4">Enter your email and phone number to reset your password.</p>
-                            <input type="email" id="reset-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <p class="text-sm text-slate-600 text-center mb-4">Enter your username and phone number to reset your password.</p>
+                            <input type="text" id="reset-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="tel" id="reset-phone" placeholder="Phone number on file" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <button onclick="handleSelfReset()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-lg hover:from-yellow-600 hover:to-orange-600">
                                 🔑 Reset Password
@@ -3340,15 +2843,6 @@
                 }
             }
             
-            // League switcher for multi-league users
-            const hasMultipleLeagues = state.userLeagues && state.userLeagues.length > 1;
-            const leagueSwitcher = hasMultipleLeagues ? `
-                <button onclick="state.showLeagueSelector = true; render();" 
-                    class="p-2 bg-white/20 hover:bg-white/30 rounded-lg" title="Switch League">
-                    🔄
-                </button>
-            ` : '';
-            
             return `
                 <header class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 text-white shadow-2xl">
                     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -3373,9 +2867,8 @@
                         <div class="flex items-center gap-3">
                             <div class="text-right text-sm">
                                 <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${getUserDisplayName(state.currentUser)}</div>
+                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.username}</div>
                             </div>
-                            ${leagueSwitcher}
                             <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
                         </div>
                     </div>
@@ -4961,13 +4454,6 @@
 
         function renderSubmitScores() {
             const isAdmin = state.currentUser?.role === 'admin';
-            const gamesPerMatch = state.currentSeason?.gamesPerMatch || 5;
-            
-            // Ensure matchups array has correct number of entries
-            if (state.matchups.length !== gamesPerMatch) {
-                state.matchups = createEmptyMatchups();
-            }
-            
             const availMatches = state.schedule.filter(m => {
                 if (m.isBye || state.matches.find(x => x.scheduleId === m.id)) return false;
                 if (m.isPositionNight) {
@@ -5062,9 +4548,6 @@
                         ${canEnterScores ? `
                             <div class="${isAdmin ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} p-4 rounded-lg border mb-6">
                                 <h3 class="font-bold ${isAdmin ? 'text-amber-800' : 'text-emerald-800'}">${away.name} @ ${home.name}</h3>
-                                <p class="text-sm ${isAdmin ? 'text-amber-700' : 'text-emerald-700'} mt-1">
-                                    📊 ${state.currentSeason?.gamesPerMatch || 5} games per match • Race to ${state.currentSeason?.raceTo || 2}
-                                </p>
                             </div>
 
                             ${(() => {
@@ -5089,10 +4572,6 @@
                                         .sort((a, b) => a.name.localeCompare(b.name))
                                         .filter(p => !otherAwaySelections.includes(p.id));
                                     
-                                    const raceTo = state.currentSeason?.raceTo || 2;
-                                    // Generate dropdown options: 0 to raceTo
-                                    const scoreOptions = Array.from({length: raceTo + 1}, (_, i) => i);
-                                    
                                     return `
                                         <div class="border rounded-lg p-4 mb-4 bg-slate-50">
                                             <h4 class="font-bold mb-3">Game ${i + 1}</h4>
@@ -5100,24 +4579,18 @@
                                                 <div>
                                                     <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home.name}</label>
                                                     <select onchange="state.matchups[${i}].homePlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                        <option value="">Select player...</option>
+                                                        <option value="">Select...</option>
                                                         ${availableHomePlayers.map(p => `<option value="${p.id}" ${m.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <select onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
-                                                        <option value="">Games</option>
-                                                        ${scoreOptions.map(n => `<option value="${n}" ${m.homeGames === String(n) || m.homeGames === n ? 'selected' : ''}>${n}</option>`).join('')}
-                                                    </select>
+                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.homeGames}" onchange="state.matchups[${i}].homeGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
                                                 </div>
                                                 <div>
                                                     <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away.name}</label>
                                                     <select onchange="state.matchups[${i}].awayPlayer = this.value; window.render();" class="w-full px-3 py-2 border rounded">
-                                                        <option value="">Select player...</option>
+                                                        <option value="">Select...</option>
                                                         ${availableAwayPlayers.map(p => `<option value="${p.id}" ${m.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                                     </select>
-                                                    <select onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold text-lg">
-                                                        <option value="">Games</option>
-                                                        ${scoreOptions.map(n => `<option value="${n}" ${m.awayGames === String(n) || m.awayGames === n ? 'selected' : ''}>${n}</option>`).join('')}
-                                                    </select>
+                                                    <input type="number" min="0" max="2" placeholder="Games" value="${m.awayGames}" onchange="state.matchups[${i}].awayGames = this.value;" class="w-full px-3 py-2 border rounded mt-2">
                                                 </div>
                                             </div>
                                         </div>
@@ -5138,6 +4611,10 @@
             const standings = calcStandings();
             const isAdmin = state.currentUser?.role === 'admin';
             const editing = state.editingStandings;
+            const tier = state.organization?.subscriptionTier || 'trial';
+            
+            // Basic tier only shows W/L, Pro+ shows games
+            const showGames = tier !== 'basic';
             
             return `
                 <div class="space-y-6">
@@ -5176,8 +4653,10 @@
                                     <th class="px-4 py-3 text-left">Team</th>
                                     <th class="px-4 py-3 text-center">W</th>
                                     <th class="px-4 py-3 text-center">L</th>
-                                    <th class="px-4 py-3 text-center">GW</th>
-                                    <th class="px-4 py-3 text-center">GL</th>
+                                    ${showGames ? `
+                                        <th class="px-4 py-3 text-center">GW</th>
+                                        <th class="px-4 py-3 text-center">GL</th>
+                                    ` : ''}
                                     <th class="px-4 py-3 text-center">%</th>
                                     ${editing ? '<th class="px-4 py-3 text-center">Adjustments</th>' : ''}
                                 </tr>
@@ -5198,8 +4677,10 @@
                                             </td>
                                             <td class="px-4 py-3 text-center">${t.wins}</td>
                                             <td class="px-4 py-3 text-center">${t.losses}</td>
-                                            <td class="px-4 py-3 text-center">${t.gamesWon}</td>
-                                            <td class="px-4 py-3 text-center">${t.gamesLost}</td>
+                                            ${showGames ? `
+                                                <td class="px-4 py-3 text-center">${t.gamesWon}</td>
+                                                <td class="px-4 py-3 text-center">${t.gamesLost}</td>
+                                            ` : ''}
                                             <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
                                             ${editing ? `
                                                 <td class="px-2 py-2">
@@ -5232,6 +4713,14 @@
                                 }).join('')}
                             </tbody>
                         </table>
+                        
+                        ${!showGames ? `
+                            <div class="bg-slate-50 border-t p-3 text-center text-sm">
+                                <a href="pricing.html" class="text-emerald-600 hover:underline">
+                                    Upgrade to Pro to see Games Won/Lost →
+                                </a>
+                            </div>
+                        ` : ''}
                     </div>
                     
                     ${editing ? `
@@ -5258,9 +4747,55 @@
         }
 
         function renderPlayerStats() {
-            const stats = calcPlayerStats();
+            const allStats = calcPlayerStats();
             const isAdmin = state.currentUser?.role === 'admin';
             const editing = state.editingPlayerStats;
+            
+            // Apply tier-based player ranking limits
+            const rankingsLimit = getPlayerRankingsLimit();
+            const tier = state.organization?.subscriptionTier || 'trial';
+            const tierLimits = getTierLimits();
+            
+            // Determine visible stats based on tier
+            let stats = allStats;
+            let hiddenCount = 0;
+            
+            if (rankingsLimit !== Infinity && allStats.length > 0) {
+                // Find cutoff - Top N positions means all players tied at position N are included
+                let visibleStats = [];
+                let currentRank = 0;
+                let lastWins = null;
+                let lastLosses = null;
+                
+                for (const player of allStats) {
+                    // Check if this is a new rank position
+                    if (player.matchWins !== lastWins || player.matchLosses !== lastLosses) {
+                        currentRank++;
+                        lastWins = player.matchWins;
+                        lastLosses = player.matchLosses;
+                    }
+                    
+                    if (currentRank <= rankingsLimit) {
+                        visibleStats.push({ ...player, rank: currentRank });
+                    }
+                }
+                
+                stats = visibleStats;
+                hiddenCount = allStats.length - stats.length;
+            } else {
+                // Assign ranks to all
+                let currentRank = 0;
+                let lastWins = null;
+                let lastLosses = null;
+                stats = allStats.map(player => {
+                    if (player.matchWins !== lastWins || player.matchLosses !== lastLosses) {
+                        currentRank++;
+                        lastWins = player.matchWins;
+                        lastLosses = player.matchLosses;
+                    }
+                    return { ...player, rank: currentRank };
+                });
+            }
             
             // Group players by team for the quick adjust section
             const teamGroups = {};
@@ -5268,6 +4803,9 @@
                 if (!teamGroups[p.team]) teamGroups[p.team] = [];
                 teamGroups[p.team].push(p);
             });
+            
+            // Determine which columns to show based on tier
+            const showGameStats = tier !== 'basic';
             
             return `
                 <div class="space-y-6">
@@ -5302,12 +4840,15 @@
                         <table class="w-full">
                             <thead class="bg-slate-100">
                                 <tr>
+                                    <th class="px-3 py-3 text-center w-12">#</th>
                                     <th class="px-4 py-3 text-left">Player</th>
                                     <th class="px-4 py-3 text-left">Team</th>
                                     <th class="px-4 py-3 text-center">MW</th>
                                     <th class="px-4 py-3 text-center">ML</th>
-                                    <th class="px-4 py-3 text-center">GW</th>
-                                    <th class="px-4 py-3 text-center">GL</th>
+                                    ${showGameStats ? `
+                                        <th class="px-4 py-3 text-center">GW</th>
+                                        <th class="px-4 py-3 text-center">GL</th>
+                                    ` : ''}
                                     <th class="px-4 py-3 text-center">%</th>
                                     ${editing ? '<th class="px-4 py-3 text-center">Adjustments</th>' : ''}
                                 </tr>
@@ -5321,6 +4862,7 @@
                                     
                                     return `
                                         <tr class="hover:bg-slate-50 ${isAdmin && hasAdj && !editing ? 'bg-amber-50' : ''}">
+                                            <td class="px-3 py-3 text-center font-bold text-slate-500">${p.rank}</td>
                                             <td class="px-4 py-3 font-semibold">
                                                 ${p.name}
                                                 ${isAdmin && hasAdj && !editing ? '<span class="ml-2 text-xs bg-amber-200 text-amber-800 px-1 rounded">adj</span>' : ''}
@@ -5328,8 +4870,10 @@
                                             <td class="px-4 py-3 text-slate-600">${p.team}</td>
                                             <td class="px-4 py-3 text-center">${p.matchWins}</td>
                                             <td class="px-4 py-3 text-center">${p.matchLosses}</td>
-                                            <td class="px-4 py-3 text-center">${p.gamesWon}</td>
-                                            <td class="px-4 py-3 text-center">${p.gamesLost}</td>
+                                            ${showGameStats ? `
+                                                <td class="px-4 py-3 text-center">${p.gamesWon}</td>
+                                                <td class="px-4 py-3 text-center">${p.gamesLost}</td>
+                                            ` : ''}
                                             <td class="px-4 py-3 text-center font-bold text-emerald-700">${pct}%</td>
                                             ${editing ? `
                                                 <td class="px-2 py-2">
@@ -5362,6 +4906,18 @@
                                 }).join('')}
                             </tbody>
                         </table>
+                        
+                        ${hiddenCount > 0 ? `
+                            <div class="bg-slate-50 border-t p-4 text-center">
+                                <p class="text-slate-600 mb-2">
+                                    <span class="font-semibold">${hiddenCount} more player${hiddenCount === 1 ? '' : 's'}</span> not shown
+                                    (${tier === 'basic' ? 'Basic plan shows Top 5' : 'Pro plan shows Top 20'})
+                                </p>
+                                <a href="pricing.html" class="text-emerald-600 font-semibold hover:underline">
+                                    Upgrade to see all players →
+                                </a>
+                            </div>
+                        ` : ''}
                     </div>
                     
                     ${editing ? `
@@ -5396,7 +4952,6 @@
 
         function renderHistory() {
             const completed = state.schedule.filter(s => !s.isBye && state.matches.find(m => m.scheduleId === s.id)).sort((a, b) => new Date(b.date) - new Date(a.date));
-            const isAdmin = state.currentUser?.role === 'admin';
             
             // Helper to get player name by ID
             const getPlayerName = (playerId) => {
@@ -5407,12 +4962,7 @@
                 return 'Unknown';
             };
             
-            // Edit modal
-            const editingMatch = state.editingHistoryMatch;
-            const editModal = editingMatch ? renderHistoryEditModal(editingMatch) : '';
-            
             return `
-                ${editModal}
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
                         <h2 class="text-3xl font-black">📜 History</h2>
@@ -5446,14 +4996,7 @@
                                 
                                 ${isExpanded ? `
                                 <div class="border-t bg-slate-50 p-6">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h4 class="font-bold text-slate-700">Match Details</h4>
-                                        ${isAdmin ? `
-                                            <button onclick="event.stopPropagation(); openHistoryEdit('${match.id}')" class="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm">
-                                                ✏️ Edit Match
-                                            </button>
-                                        ` : ''}
-                                    </div>
+                                    <h4 class="font-bold text-slate-700 mb-4">Match Details</h4>
                                     ${isMarkedPlayed ? `
                                         <div class="text-center py-6">
                                             <div class="text-4xl mb-2">✓</div>
@@ -5500,94 +5043,11 @@
                                             </div>
                                         </div>
                                     `}
-                                    
-                                    ${isAdmin ? `
-                                        <div class="mt-4 pt-4 border-t">
-                                            <button onclick="event.stopPropagation(); confirmDeleteMatch('${match.id}')" class="px-4 py-2 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 text-sm">
-                                                🗑️ Delete Match
-                                            </button>
-                                        </div>
-                                    ` : ''}
                                 </div>
                                 ` : ''}
                             </div>
                         `;
                     }).join('')}
-                </div>
-            `;
-        }
-        
-        // Render edit modal for history match
-        function renderHistoryEditModal(matchId) {
-            const match = state.matches.find(m => m.id === matchId);
-            if (!match) return '';
-            
-            const sched = state.schedule.find(s => s.id === match.scheduleId);
-            if (!sched) return '';
-            
-            const home = state.teams.find(t => t.id === sched.homeTeamId);
-            const away = state.teams.find(t => t.id === sched.awayTeamId);
-            if (!home || !away) return '';
-            
-            const raceTo = state.currentSeason?.raceTo || 2;
-            const scoreOptions = Array.from({length: raceTo + 1}, (_, i) => i);
-            
-            // Use editing matchups from state, or initialize from match
-            const editMatchups = state.editHistoryMatchups || match.matchups || [];
-            
-            return `
-                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="closeHistoryEdit()">
-                    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-                        <div class="bg-amber-500 text-white p-6 rounded-t-xl">
-                            <h3 class="text-2xl font-black">✏️ Edit Match</h3>
-                            <p class="opacity-90">${away?.name} @ ${home?.name} • Week ${sched.week}</p>
-                        </div>
-                        
-                        <div class="p-6 space-y-4">
-                            ${editMatchups.map((mu, i) => `
-                                <div class="border rounded-lg p-4 bg-slate-50">
-                                    <h4 class="font-bold mb-3">Game ${i + 1}</h4>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${home?.name}</label>
-                                            <select onchange="updateEditMatchup(${i}, 'homePlayer', this.value)" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select player...</option>
-                                                ${(home?.players || []).sort((a,b) => a.name.localeCompare(b.name)).map(p => 
-                                                    `<option value="${p.id}" ${mu.homePlayer === p.id ? 'selected' : ''}>${p.name}</option>`
-                                                ).join('')}
-                                            </select>
-                                            <select onchange="updateEditMatchup(${i}, 'homeGames', this.value)" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold">
-                                                <option value="">Games</option>
-                                                ${scoreOptions.map(n => `<option value="${n}" ${String(mu.homeGames) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">${away?.name}</label>
-                                            <select onchange="updateEditMatchup(${i}, 'awayPlayer', this.value)" class="w-full px-3 py-2 border rounded">
-                                                <option value="">Select player...</option>
-                                                ${(away?.players || []).sort((a,b) => a.name.localeCompare(b.name)).map(p => 
-                                                    `<option value="${p.id}" ${mu.awayPlayer === p.id ? 'selected' : ''}>${p.name}</option>`
-                                                ).join('')}
-                                            </select>
-                                            <select onchange="updateEditMatchup(${i}, 'awayGames', this.value)" class="w-full px-3 py-2 border rounded mt-2 text-center font-bold">
-                                                <option value="">Games</option>
-                                                ${scoreOptions.map(n => `<option value="${n}" ${String(mu.awayGames) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                        
-                        <div class="p-6 border-t bg-slate-50 flex gap-3 justify-end rounded-b-xl">
-                            <button onclick="closeHistoryEdit()" class="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
-                                Cancel
-                            </button>
-                            <button onclick="saveHistoryEdit('${matchId}')" class="px-6 py-3 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600">
-                                💾 Save Changes
-                            </button>
-                        </div>
-                    </div>
                 </div>
             `;
         }
@@ -5601,7 +5061,7 @@
             // Get captains not already assigned to a team
             const assignedCaptains = state.teams.map(t => t.captain).filter(c => c);
             const availableCaptains = state.users.filter(u => 
-                u.role === 'captain' && !assignedCaptains.includes(u.email) && !assignedCaptains.includes(getUserDisplayName(u))
+                u.role === 'captain' && !assignedCaptains.includes(u.username)
             );
             
             return `
@@ -5672,7 +5132,7 @@
                                 <label class="block text-sm font-bold mb-1">Captain</label>
                                 <select id="team-captain" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="">Select captain...</option>
-                                    ${availableCaptains.map(c => `<option value="${c.email}">${getUserDisplayName(c)}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
+                                    ${availableCaptains.map(c => `<option value="${c.username}">${c.username}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
                                 </select>
                                 ${availableCaptains.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ No available captains (create users or unassign existing)</p>' : ''}
                             </div>
@@ -5758,146 +5218,6 @@
             const myTeam = state.teams.find(t => t.id === myTeamId);
             const canCreateUsers = isAdmin || isCaptain;
             
-            // Invite result modal (shown after creating user)
-            const inviteModal = state.showInviteResult ? `
-                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-t-2xl">
-                            <h3 class="text-xl font-bold">✅ User Invited!</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <p class="text-slate-700">
-                                <strong>${getUserDisplayName(state.showInviteResult.user)}</strong> has been added.
-                            </p>
-                            
-                            ${state.showInviteResult.emailSent ? `
-                                <div class="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
-                                    <span class="text-green-600 text-lg">✉️</span>
-                                    <div>
-                                        <p class="text-green-800 font-medium text-sm">Invite email sent!</p>
-                                        <p class="text-green-600 text-xs">Sent to ${state.showInviteResult.user.email}</p>
-                                    </div>
-                                </div>
-                            ` : `
-                                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2">
-                                    <span class="text-yellow-600 text-lg">⚠️</span>
-                                    <div>
-                                        <p class="text-yellow-800 font-medium text-sm">Email not sent</p>
-                                        <p class="text-yellow-600 text-xs">Share the link below manually</p>
-                                    </div>
-                                </div>
-                            `}
-                            
-                            <p class="text-sm text-slate-600">
-                                ${state.showInviteResult.emailSent ? 'Or share this link directly:' : 'Share this setup link with them:'}
-                            </p>
-                            <div class="bg-slate-100 p-3 rounded-lg">
-                                <input type="text" readonly value="${state.showInviteResult.inviteUrl}" 
-                                    id="invite-url-input"
-                                    class="w-full bg-transparent text-sm text-slate-700 border-0 outline-none">
-                            </div>
-                            <div class="flex gap-2">
-                                <button onclick="copyInviteLink()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">
-                                    📋 Copy Link
-                                </button>
-                                <button onclick="sendInviteSMS()" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">
-                                    📱 Send SMS
-                                </button>
-                            </div>
-                            <p class="text-xs text-slate-500 text-center">
-                                The link is single-use and works until they set their password.
-                            </p>
-                            <button onclick="closeInviteModal()" class="w-full px-4 py-2 border-2 border-slate-300 rounded-lg font-bold text-slate-600 hover:bg-slate-50">
-                                Done
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ` : '';
-            
-            // Edit modal
-            const editModal = state.editingUser ? `
-                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-t-2xl">
-                            <h3 class="text-xl font-bold">✏️ Edit User</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-sm font-bold text-slate-700 mb-1">First Name</label>
-                                    <input type="text" id="edit-firstname" value="${state.editingUser.firstName}" 
-                                        onchange="updateEditingUser('firstName', this.value)"
-                                        class="w-full px-3 py-2 border-2 rounded-lg">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-bold text-slate-700 mb-1">Last Name</label>
-                                    <input type="text" id="edit-lastname" value="${state.editingUser.lastName}"
-                                        onchange="updateEditingUser('lastName', this.value)"
-                                        class="w-full px-3 py-2 border-2 rounded-lg">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Email *</label>
-                                <input type="email" id="edit-email" value="${state.editingUser.email}"
-                                    onchange="updateEditingUser('email', this.value)"
-                                    class="w-full px-3 py-2 border-2 rounded-lg">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Phone *</label>
-                                <input type="tel" id="edit-phone" value="${state.editingUser.phone}"
-                                    onchange="updateEditingUser('phone', this.value)"
-                                    class="w-full px-3 py-2 border-2 rounded-lg">
-                            </div>
-                            ${isAdmin ? `
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Role</label>
-                                <select id="edit-role" onchange="updateEditingUser('role', this.value)"
-                                    class="w-full px-3 py-2 border-2 rounded-lg">
-                                    <option value="player" ${state.editingUser.role === 'player' ? 'selected' : ''}>Player</option>
-                                    <option value="captain" ${state.editingUser.role === 'captain' ? 'selected' : ''}>Captain</option>
-                                    <option value="admin" ${state.editingUser.role === 'admin' ? 'selected' : ''}>Admin</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Team</label>
-                                <select id="edit-team" onchange="updateEditingUser('teamId', this.value)"
-                                    class="w-full px-3 py-2 border-2 rounded-lg">
-                                    <option value="">No team</option>
-                                    ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => 
-                                        `<option value="${t.id}" ${state.editingUser.teamId === t.id ? 'selected' : ''}>${t.name}</option>`
-                                    ).join('')}
-                                </select>
-                            </div>
-                            ` : ''}
-                            <div class="flex gap-3 pt-4">
-                                <button onclick="cancelEditUser()" class="flex-1 px-4 py-2 border-2 border-slate-300 rounded-lg font-bold text-slate-600 hover:bg-slate-50">
-                                    Cancel
-                                </button>
-                                <button onclick="saveUser()" class="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700">
-                                    Save Changes
-                                </button>
-                            </div>
-                            ${isAdmin && state.editingUser.id !== state.currentUser.id ? `
-                            <div class="pt-4 border-t flex gap-2">
-                                <button onclick="handleResendInvite('${state.editingUser.id}')" class="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600">
-                                    📧 Resend Invite
-                                </button>
-                                <button onclick="resetPassword('${state.editingUser.id}')" class="flex-1 px-3 py-2 bg-yellow-500 text-white rounded-lg text-sm font-bold hover:bg-yellow-600">
-                                    🔑 Reset Password
-                                </button>
-                            </div>
-                            <div class="pt-2">
-                                <button onclick="if(confirm('Delete this user?')) { deleteUser('${state.editingUser.id}'); cancelEditUser(); }" class="w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">
-                                    🗑️ Delete User
-                                </button>
-                            </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            ` : '';
-            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
@@ -5907,15 +5227,11 @@
 
                     ${canCreateUsers ? `
                     <div class="bg-white rounded-xl shadow-lg p-6">
-                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Invite Team Member' : 'Invite User'}</button>
+                        <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
                         <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
-                            <p class="text-sm text-slate-600">They'll receive a link to set up their password.</p>
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="text" id="new-firstname" placeholder="First Name" class="w-full px-4 py-2 border-2 rounded-lg">
-                                <input type="text" id="new-lastname" placeholder="Last Name" class="w-full px-4 py-2 border-2 rounded-lg">
-                            </div>
-                            <input type="email" id="new-email" placeholder="Email *" class="w-full px-4 py-2 border-2 rounded-lg">
-                            <input type="tel" id="new-phone" placeholder="Phone *" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="text" id="new-username" placeholder="Username" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
                             ${isAdmin ? `
                                 <select id="new-user-role" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="player">Player (view only)</option>
@@ -5927,7 +5243,7 @@
                                     ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
                                 </select>
                             ` : `<p class="text-xs text-slate-500">New member will be added to your team as a player</p>`}
-                            <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Send Invite</button>
+                            <button onclick="handleCreateUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">Create</button>
                         </div>
                     </div>
                     ` : ''}
@@ -5937,30 +5253,29 @@
                         ${visibleUsers.map(user => {
                             const team = state.teams.find(t => t.id === user.teamId);
                             const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
-                            const displayName = getUserDisplayName(user);
-                            const canEdit = isAdmin || user.id === state.currentUser.id || (isCaptain && user.teamId === myTeamId);
-                            const isPending = user.status === 'pending' || user.inviteToken;
                             return `
-                            <div onclick="${canEdit ? `editUser('${user.id}')` : ''}" 
-                                class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''} ${canEdit ? 'cursor-pointer hover:bg-slate-50' : ''}">
+                            <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
                                 <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold flex items-center gap-2 flex-wrap">
-                                        ${displayName} 
-                                        ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}
-                                        ${isPending ? '<span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">⏳ Pending</span>' : ''}
-                                        ${canEdit ? '<span class="text-xs text-blue-500">✏️</span>' : ''}
-                                    </div>
-                                    <div class="text-sm text-slate-500">${user.email || ''}</div>
+                                    <div class="font-bold">${user.username} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
-                                    ${user.phone ? '<div class="text-sm"><span class="text-blue-600">📞 ' + user.phone + '</span></div>' : ''}
+                                    ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
                                 </div>
+                                ${isAdmin && user.id !== state.currentUser.id ? `
+                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
+                                    <select onchange="assignTeam('${user.id}', this.value)" class="px-2 py-1 border rounded text-sm">
+                                        <option value="">No team</option>
+                                        ${[...state.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${user.teamId === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                    </select>
+                                    <button onclick="deleteUser('${user.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
+                                ` : ''}
+                                ${isCaptain && user.id !== state.currentUser.id ? `
+                                    <button onclick="resetPassword('${user.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded text-sm">🔑 Reset</button>
+                                ` : ''}
                             </div>
                         `}).join('')}
                     </div>
                 </div>
-                ${editModal}
-                ${inviteModal}
             `;
         }
 
@@ -6419,6 +5734,18 @@
             const trialEndsAt = org?.trialEndsAt ? new Date(org.trialEndsAt) : null;
             const daysLeft = trialEndsAt ? Math.ceil((trialEndsAt - new Date()) / (1000 * 60 * 60 * 24)) : 0;
             
+            // Get tier limits
+            const limits = getTierLimits();
+            const teamCount = state.teams.length;
+            
+            // Tier display names
+            const tierNames = {
+                trial: 'Free Trial (Pro features)',
+                basic: 'Basic',
+                pro: 'Pro',
+                premium: 'Premium'
+            };
+            
             return `
                 <div class="space-y-6">
                     <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-lg p-6">
@@ -6437,12 +5764,12 @@
                                         ${daysLeft <= 0 ? 'Your free trial has expired' : `Free Trial - ${daysLeft} days remaining`}
                                     </p>
                                     <p class="text-sm ${daysLeft <= 3 ? 'text-red-700' : 'text-yellow-700'}">
-                                        ${daysLeft <= 0 ? 'Upgrade now to continue using Pool League Manager' : 'Upgrade anytime to unlock all features'}
+                                        ${daysLeft <= 0 ? 'Upgrade now to continue using Pool League Manager' : 'Pro features included during trial'}
                                     </p>
                                 </div>
                             </div>
                             <a href="pricing.html" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700">
-                                Upgrade Now →
+                                Choose Your Plan →
                             </a>
                         </div>
                         ` : subStatus === 'active' ? `
@@ -6451,13 +5778,13 @@
                                 <span class="text-2xl">✅</span>
                                 <div>
                                     <p class="font-bold text-emerald-800">
-                                        ${subTier.charAt(0).toUpperCase() + subTier.slice(1)} Plan - Active
+                                        ${tierNames[subTier] || subTier} Plan - Active
                                     </p>
                                     <p class="text-sm text-emerald-700">Thank you for subscribing!</p>
                                 </div>
                             </div>
                             <a href="pricing.html" class="mt-4 block w-full py-3 bg-slate-600 text-white text-center font-bold rounded-lg hover:bg-slate-700">
-                                Manage Subscription →
+                                ${subTier === 'premium' ? 'Manage Subscription' : 'Upgrade Plan'} →
                             </a>
                         </div>
                         ` : `
@@ -6474,6 +5801,52 @@
                             </a>
                         </div>
                         `}
+                        
+                        <!-- Plan Details -->
+                        <div class="mt-4 pt-4 border-t">
+                            <h4 class="font-semibold text-slate-700 mb-3">Your Plan Includes:</h4>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <span class="${teamCount > limits.teams ? 'text-red-500' : 'text-emerald-500'}">
+                                        ${teamCount > limits.teams ? '⚠️' : '✓'}
+                                    </span>
+                                    <span>
+                                        ${limits.teams === Infinity ? 'Unlimited teams' : `Up to ${limits.teams} teams`}
+                                        <span class="text-slate-400">(using ${teamCount})</span>
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-emerald-500">✓</span>
+                                    <span>
+                                        ${limits.playerRankings === Infinity ? 'All player rankings' : `Top ${limits.playerRankings} player rankings`}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-emerald-500">✓</span>
+                                    <span>
+                                        ${limits.historyYears === Infinity ? 'All-time history' : limits.historyYears === 0 ? 'Current season only' : `${limits.historyYears} years of history`}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="${limits.photoUpload ? 'text-emerald-500' : 'text-slate-300'}">
+                                        ${limits.photoUpload ? '✓' : '✗'}
+                                    </span>
+                                    <span class="${limits.photoUpload ? '' : 'text-slate-400'}">Photo score upload</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="${limits.hallOfFame ? 'text-emerald-500' : 'text-slate-300'}">
+                                        ${limits.hallOfFame ? '✓' : '✗'}
+                                    </span>
+                                    <span class="${limits.hallOfFame ? '' : 'text-slate-400'}">Hall of Fame</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="${limits.headToHead ? 'text-emerald-500' : 'text-slate-300'}">
+                                        ${limits.headToHead ? '✓' : '✗'}
+                                    </span>
+                                    <span class="${limits.headToHead ? '' : 'text-slate-400'}">Head-to-head records</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Season Management -->
@@ -6507,41 +5880,6 @@
                         ` : ''}
                     </div>
                     
-                    <!-- Match Format Settings for Current Season -->
-                    ${state.currentSeason ? `
-                    <div class="bg-white rounded-xl shadow-lg p-6">
-                        <h3 class="text-lg font-bold mb-4">🎱 Match Format Settings</h3>
-                        <p class="text-sm text-slate-600 mb-4">Configure the scoring format for <span class="font-semibold">${state.currentSeason.name}</span>. These settings apply to this season only.</p>
-                        
-                        <div class="grid md:grid-cols-2 gap-6">
-                            <div>
-                                <label class="block text-sm font-bold mb-2">Games Per Match</label>
-                                <p class="text-xs text-slate-500 mb-2">How many individual player matchups per team match</p>
-                                <select id="games-per-match" class="w-full px-4 py-3 border-2 rounded-lg text-lg">
-                                    ${[3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${(state.currentSeason.gamesPerMatch || 5) === n ? 'selected' : ''}>${n} games</option>`).join('')}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold mb-2">Race To</label>
-                                <p class="text-xs text-slate-500 mb-2">Games needed to win each individual matchup</p>
-                                <select id="race-to" class="w-full px-4 py-3 border-2 rounded-lg text-lg">
-                                    ${[1,2,3,4,5].map(n => `<option value="${n}" ${(state.currentSeason.raceTo || 2) === n ? 'selected' : ''}>Race to ${n} ${n === 1 ? '(single game)' : n === 2 ? '(best of 3)' : n === 3 ? '(best of 5)' : n === 4 ? '(best of 7)' : '(best of 9)'}</option>`).join('')}
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-4 p-3 bg-slate-50 rounded-lg">
-                            <p class="text-sm text-slate-700">
-                                <strong>Current format:</strong> ${state.currentSeason.gamesPerMatch || 5} player matchups per team match, each is race to ${state.currentSeason.raceTo || 2}
-                            </p>
-                        </div>
-                        
-                        <button onclick="saveMatchFormatSettings()" class="mt-4 w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700">
-                            💾 Save Match Format
-                        </button>
-                    </div>
-                    ` : ''}
-                    
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <label class="block text-sm font-bold mb-2">League Name</label>
                         <input type="text" id="league-name" value="${state.leagueName}" class="w-full px-4 py-2 border-2 rounded-lg mb-4">
@@ -6571,25 +5909,24 @@
         // EVENT HANDLERS (attach to window for onclick)
         // ============================================
         window.handleLogin = async function() {
-            const email = document.getElementById('login-email').value;
+            const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
 
-            if (!email || !password) {
-                document.getElementById('login-error').textContent = 'Please enter email and password';
+            if (!username || !password) {
+                document.getElementById('login-error').textContent = 'Please enter username and password';
                 document.getElementById('login-error').classList.remove('hidden');
                 return;
             }
 
-            if (!await login(email, password)) {
+            if (!await login(username, password)) {
                 document.getElementById('login-error').textContent = 'Invalid credentials';
                 document.getElementById('login-error').classList.remove('hidden');
             }
         };
 
         window.handleCreateUser = async function() {
-            const firstName = document.getElementById('new-firstname').value;
-            const lastName = document.getElementById('new-lastname').value;
-            const email = document.getElementById('new-email').value;
+            const username = document.getElementById('new-username').value;
+            const password = document.getElementById('new-password').value;
             const phone = document.getElementById('new-phone').value;
             
             // Admins can pick role and team, captains create players for their team
@@ -6609,21 +5946,13 @@
                 teamId = state.currentUser.teamId;
             }
             
-            // Use invite system - no password needed
-            const result = await inviteUser(email, phone, role, teamId, firstName, lastName);
-            
-            if (result) {
-                document.getElementById('new-firstname').value = '';
-                document.getElementById('new-lastname').value = '';
-                document.getElementById('new-email').value = '';
+            if (await createAccount(username, password, phone, role, teamId)) {
+                document.getElementById('new-username').value = '';
+                document.getElementById('new-password').value = '';
                 document.getElementById('new-phone').value = '';
                 if (roleSelect) roleSelect.value = 'player';
                 if (teamSelect) teamSelect.value = '';
                 document.getElementById('create-user-form').classList.add('hidden');
-                
-                // Show invite link modal
-                state.showInviteResult = result;
-                render();
             }
         };
 
@@ -6658,307 +5987,27 @@
             await saveLeagueName(document.getElementById('league-name').value);
             alert('Saved!');
         };
-        
-        window.saveMatchFormatSettings = async function() {
-            if (!state.currentSeason?.id) {
-                alert('No season selected');
-                return;
-            }
-            
-            const gamesPerMatch = parseInt(document.getElementById('games-per-match').value) || 5;
-            const raceTo = parseInt(document.getElementById('race-to').value) || 2;
-            
-            showLoading();
-            try {
-                const { error } = await db.from('seasons').update({
-                    games_per_match: gamesPerMatch,
-                    race_to: raceTo
-                }).eq('id', state.currentSeason.id);
-                
-                if (error) throw error;
-                
-                // Update local state
-                state.currentSeason.gamesPerMatch = gamesPerMatch;
-                state.currentSeason.raceTo = raceTo;
-                state.seasons = state.seasons.map(s => 
-                    s.id === state.currentSeason.id 
-                        ? { ...s, gamesPerMatch, raceTo } 
-                        : s
-                );
-                
-                // Reset matchups to reflect new game count
-                resetMatchups();
-                
-                alert(`Match format updated!\n\n${gamesPerMatch} games per match\nRace to ${raceTo}`);
-                render();
-            } catch (error) {
-                console.error('Error saving match format:', error);
-                alert('Error saving match format settings');
-            } finally {
-                hideLoading();
-            }
-        };
-        
-        // History edit handlers
-        window.openHistoryEdit = function(matchId) {
-            const match = state.matches.find(m => m.id === matchId);
-            if (!match) return;
-            
-            // Clone matchups for editing
-            state.editingHistoryMatch = matchId;
-            state.editHistoryMatchups = JSON.parse(JSON.stringify(match.matchups || []));
-            render();
-        };
-        
-        window.closeHistoryEdit = function() {
-            state.editingHistoryMatch = null;
-            state.editHistoryMatchups = null;
-            render();
-        };
-        
-        window.updateEditMatchup = function(gameIndex, field, value) {
-            if (!state.editHistoryMatchups) return;
-            state.editHistoryMatchups[gameIndex][field] = value;
-            // Don't call render() - it resets scroll position
-        };
-        
-        window.saveHistoryEdit = async function(matchId) {
-            const matchups = state.editHistoryMatchups;
-            const raceTo = state.currentSeason?.raceTo || 2;
-            
-            // Validate all games
-            for (let i = 0; i < matchups.length; i++) {
-                const m = matchups[i];
-                
-                if (!m.homePlayer) {
-                    alert(`Game ${i + 1}: Select the home team player`);
-                    return;
-                }
-                if (!m.awayPlayer) {
-                    alert(`Game ${i + 1}: Select the away team player`);
-                    return;
-                }
-                if (m.homeGames === '' || m.homeGames === null || m.homeGames === undefined) {
-                    alert(`Game ${i + 1}: Select games won for home player`);
-                    return;
-                }
-                if (m.awayGames === '' || m.awayGames === null || m.awayGames === undefined) {
-                    alert(`Game ${i + 1}: Select games won for away player`);
-                    return;
-                }
-                
-                const hg = parseInt(m.homeGames);
-                const ag = parseInt(m.awayGames);
-                const validScore = (hg === raceTo && ag < raceTo) || (ag === raceTo && hg < raceTo);
-                if (!validScore) {
-                    alert(`Game ${i + 1}: Invalid score (${hg}-${ag}). One player must win ${raceTo}, other must have less.`);
-                    return;
-                }
-            }
-            
-            // Calculate new team scores
-            const homeScore = matchups.filter(m => parseInt(m.homeGames) > parseInt(m.awayGames)).length;
-            const awayScore = matchups.filter(m => parseInt(m.awayGames) > parseInt(m.homeGames)).length;
-            
-            showLoading();
-            try {
-                const { error } = await db.from('matches').update({
-                    matchups: matchups,
-                    home_score: homeScore,
-                    away_score: awayScore
-                }).eq('id', matchId);
-                
-                if (error) throw error;
-                
-                // Update local state
-                state.matches = state.matches.map(m => 
-                    m.id === matchId 
-                        ? { ...m, matchups: matchups, homeScore: homeScore, awayScore: awayScore }
-                        : m
-                );
-                
-                state.editingHistoryMatch = null;
-                state.editHistoryMatchups = null;
-                
-                alert('Match updated successfully!');
-                render();
-            } catch (error) {
-                console.error('Error updating match:', error);
-                alert('Error updating match');
-            } finally {
-                hideLoading();
-            }
-        };
-        
-        window.confirmDeleteMatch = async function(matchId) {
-            const match = state.matches.find(m => m.id === matchId);
-            if (!match) return;
-            
-            const sched = state.schedule.find(s => s.id === match.scheduleId);
-            const home = state.teams.find(t => t.id === sched?.homeTeamId);
-            const away = state.teams.find(t => t.id === sched?.awayTeamId);
-            
-            if (!confirm(`Delete this match result?\n\n${away?.name} @ ${home?.name}\nScore: ${match.awayScore} - ${match.homeScore}\n\nThis cannot be undone.`)) {
-                return;
-            }
-            
-            showLoading();
-            try {
-                const { error } = await db.from('matches').delete().eq('id', matchId);
-                if (error) throw error;
-                
-                state.matches = state.matches.filter(m => m.id !== matchId);
-                state.selectedHistoryMatch = null;
-                
-                alert('Match deleted');
-                render();
-            } catch (error) {
-                console.error('Error deleting match:', error);
-                alert('Error deleting match');
-            } finally {
-                hideLoading();
-            }
-        };
 
         // Password reset handlers
         window.resetPassword = resetPassword;
         
         window.showResetForm = function() {
             document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('signup-form')?.classList.add('hidden');
             document.getElementById('reset-form').classList.remove('hidden');
         };
         
         window.showLoginForm = function() {
             document.getElementById('reset-form').classList.add('hidden');
-            document.getElementById('signup-form')?.classList.add('hidden');
             document.getElementById('login-form').classList.remove('hidden');
         };
         
-        window.showSignupForm = function() {
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('reset-form').classList.add('hidden');
-            document.getElementById('signup-form').classList.remove('hidden');
-        };
-        
         window.handleSelfReset = async function() {
-            const email = document.getElementById('reset-email').value;
+            const username = document.getElementById('reset-username').value;
             const phone = document.getElementById('reset-phone').value;
-            if (await selfServiceReset(email, phone)) {
-                document.getElementById('reset-email').value = '';
+            if (await selfServiceReset(username, phone)) {
+                document.getElementById('reset-username').value = '';
                 document.getElementById('reset-phone').value = '';
                 showLoginForm();
-            }
-        };
-        
-        window.handleSignup = async function() {
-            const orgName = document.getElementById('signup-org-name').value.trim();
-            const firstName = document.getElementById('signup-firstname').value.trim();
-            const lastName = document.getElementById('signup-lastname').value.trim();
-            const email = document.getElementById('signup-email').value.trim();
-            const phone = document.getElementById('signup-phone').value.trim();
-            const password = document.getElementById('signup-password').value;
-            const password2 = document.getElementById('signup-password2').value;
-            const errorEl = document.getElementById('signup-error');
-            
-            // Validation
-            if (!orgName) {
-                errorEl.textContent = 'Organization name is required';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            if (!email) {
-                errorEl.textContent = 'Email is required';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            if (!phone || phone.replace(/\D/g, '').length < 10) {
-                errorEl.textContent = 'Valid phone number required (10+ digits)';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            if (!password || password.length < 4) {
-                errorEl.textContent = 'Password must be at least 4 characters';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            if (password !== password2) {
-                errorEl.textContent = 'Passwords do not match';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            
-            showLoading();
-            try {
-                // Check if email already exists
-                const { data: existingUsers } = await db.from('users').select('id').eq('email', email).limit(1);
-                if (existingUsers && existingUsers.length > 0) {
-                    errorEl.textContent = 'Email already registered. Please sign in.';
-                    errorEl.classList.remove('hidden');
-                    hideLoading();
-                    return;
-                }
-                
-                // Create organization with 14-day trial
-                const trialEnds = new Date();
-                trialEnds.setDate(trialEnds.getDate() + 14);
-                
-                const { data: newOrg, error: orgError } = await db.from('organizations').insert({
-                    name: orgName,
-                    subscription_tier: 'trial',
-                    subscription_status: 'trial',
-                    trial_ends_at: trialEnds.toISOString()
-                }).select().single();
-                
-                if (orgError) throw orgError;
-                
-                // Create admin user
-                const { data: newUser, error: userError } = await db.from('users').insert({
-                    email: email,
-                    password: password,
-                    phone: phone,
-                    first_name: firstName || null,
-                    last_name: lastName || null,
-                    role: 'admin',
-                    org_id: newOrg.id
-                }).select().single();
-                
-                if (userError) throw userError;
-                
-                // Create org_membership if table exists
-                try {
-                    await db.from('org_memberships').insert({
-                        user_id: newUser.id,
-                        org_id: newOrg.id,
-                        role: 'owner'
-                    });
-                } catch (e) {
-                    // org_memberships table might not exist yet, that's ok
-                    console.log('org_memberships table not found, skipping');
-                }
-                
-                alert(`Welcome to Pool League Manager! 🎉\n\nYour organization "${orgName}" has been created with a 14-day free trial.\n\nYou can now sign in with your email and password.`);
-                
-                // Clear form and switch to login
-                document.getElementById('signup-org-name').value = '';
-                document.getElementById('signup-firstname').value = '';
-                document.getElementById('signup-lastname').value = '';
-                document.getElementById('signup-email').value = '';
-                document.getElementById('signup-phone').value = '';
-                document.getElementById('signup-password').value = '';
-                document.getElementById('signup-password2').value = '';
-                errorEl.classList.add('hidden');
-                
-                // Pre-fill login email
-                showLoginForm();
-                document.getElementById('login-email').value = email;
-                
-            } catch (error) {
-                console.error('Signup error:', error);
-                errorEl.textContent = 'Error creating account: ' + error.message;
-                errorEl.classList.remove('hidden');
-            } finally {
-                hideLoading();
             }
         };
 
@@ -6966,83 +6015,6 @@
             const input = document.getElementById('new-season-name');
             if (await createSeason(input.value)) {
                 input.value = '';
-            }
-        };
-        
-        // Invite system functions
-        window.inviteUser = inviteUser;
-        window.resendInvite = resendInvite;
-        window.completeInvite = completeInvite;
-        
-        window.copyInviteLink = function() {
-            const input = document.getElementById('invite-url-input');
-            if (input) {
-                input.select();
-                document.execCommand('copy');
-                alert('Link copied to clipboard!');
-            }
-        };
-        
-        window.sendInviteSMS = function() {
-            if (!state.showInviteResult) return;
-            const user = state.showInviteResult.user;
-            const url = state.showInviteResult.inviteUrl;
-            const phone = user.phone?.replace(/\D/g, '');
-            const displayName = getUserDisplayName(user);
-            const leagueName = state.leagueName || 'Pool League';
-            
-            const message = `Welcome to ${leagueName}! Set up your account here: ${url}`;
-            
-            // Open SMS app with pre-filled message
-            window.open(`sms:${phone}?body=${encodeURIComponent(message)}`, '_blank');
-        };
-        
-        window.closeInviteModal = function() {
-            state.showInviteResult = null;
-            render();
-        };
-        
-        window.handleResendInvite = async function(userId) {
-            const url = await resendInvite(userId);
-            if (url) {
-                const user = state.users.find(u => u.id === userId);
-                state.showInviteResult = { user, inviteUrl: url };
-                state.editingUser = null;
-                render();
-            }
-        };
-        
-        window.handleCompleteInvite = async function() {
-            const password = document.getElementById('setup-password').value;
-            const password2 = document.getElementById('setup-password2').value;
-            const errorEl = document.getElementById('setup-error');
-            
-            if (!password || password.length < 4) {
-                errorEl.textContent = 'Password must be at least 4 characters';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            
-            if (password !== password2) {
-                errorEl.textContent = 'Passwords do not match';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-            
-            const result = await completeInvite(state.inviteToken, password);
-            if (result) {
-                // Clear invite token from URL and state
-                window.history.replaceState({}, document.title, window.location.pathname);
-                state.inviteToken = null;
-                
-                // Pre-fill email on login form
-                render();
-                setTimeout(() => {
-                    const emailInput = document.getElementById('login-email');
-                    if (emailInput && result.email) {
-                        emailInput.value = result.email;
-                    }
-                }, 100);
             }
         };
 
@@ -7072,14 +6044,8 @@
             }
 
             const app = document.getElementById('app');
-            
-            // Check for invite token in URL
-            if (window.state.inviteToken) {
-                app.innerHTML = renderInviteSetup();
-            } else if (!window.state.currentUser) {
+            if (!window.state.currentUser) {
                 app.innerHTML = renderLoginScreen();
-            } else if (window.state.showLeagueSelector) {
-                app.innerHTML = renderLeagueSelector();
             } else {
                 const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
                 app.innerHTML = `
@@ -7091,83 +6057,6 @@
                 `;
             }
         }
-        
-        // Invite setup page for new users
-        function renderInviteSetup() {
-            return `
-                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border-4 border-emerald-700">
-                        <div class="text-center mb-8">
-                            <div class="text-6xl mb-4">🎱</div>
-                            <h1 class="text-3xl font-black text-slate-800 mb-2">Welcome!</h1>
-                            <p class="text-slate-600">Set up your account to get started</p>
-                        </div>
-                        
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Create Your Password</label>
-                                <input type="password" id="setup-password" placeholder="Password (min 4 characters)" 
-                                    class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-1">Confirm Password</label>
-                                <input type="password" id="setup-password2" placeholder="Confirm password" 
-                                    class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
-                            </div>
-                            <div id="setup-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
-                            <button onclick="handleCompleteInvite()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
-                                🚀 Activate Account
-                            </button>
-                            <p class="text-xs text-slate-500 text-center mt-4">
-                                After setting your password, you'll be able to sign in and view your league.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        // League selector for users in multiple leagues
-        function renderLeagueSelector() {
-            const leagues = state.userLeagues || [];
-            const displayName = getUserDisplayName(state.currentUser);
-            
-            return `
-                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg border-4 border-emerald-700">
-                        <div class="text-center mb-6">
-                            <div class="text-5xl mb-3">🎱</div>
-                            <h1 class="text-2xl font-black text-slate-800">Welcome, ${displayName}!</h1>
-                            <p class="text-slate-600 mt-2">Select a league to continue</p>
-                        </div>
-                        
-                        <div class="space-y-3">
-                            ${leagues.map(league => `
-                                <button onclick="selectLeague(${JSON.stringify(league).replace(/"/g, '&quot;')})" 
-                                    class="w-full p-4 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border-2 border-emerald-200 rounded-xl text-left transition-all hover:shadow-md">
-                                    <div class="flex items-center justify-between">
-                                        <div>
-                                            <div class="font-bold text-lg text-emerald-800">${league.leagueName}</div>
-                                            <div class="text-sm text-slate-600">${league.orgName}</div>
-                                            ${league.teamName ? `<div class="text-xs text-emerald-600 mt-1">🏠 ${league.teamName}</div>` : ''}
-                                        </div>
-                                        <div class="text-right">
-                                            <span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">${league.role || 'Member'}</span>
-                                        </div>
-                                    </div>
-                                </button>
-                            `).join('')}
-                        </div>
-                        
-                        <div class="mt-6 pt-4 border-t text-center">
-                            <button onclick="logout()" class="text-slate-500 hover:text-slate-700 text-sm">
-                                ← Sign out and use a different account
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
 
         // ============================================
         // INIT
@@ -7175,22 +6064,12 @@
         async function init() {
             render(); // Show loading screen
             
-            // Check for invite token in URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const inviteToken = urlParams.get('invite');
-            if (inviteToken) {
-                state.inviteToken = inviteToken;
-                state.initialized = true;
-                render();
-                return; // Don't load session, just show setup page
-            }
-            
             const session = localStorage.getItem('plm_session');
             if (session) {
                 try {
                     const { id } = JSON.parse(session);
                     
-                    // Load user
+                    // Load user and their organization
                     const { data: userData, error } = await db.from('users')
                         .select('*')
                         .eq('id', id)
@@ -7198,62 +6077,49 @@
                     
                     if (userData && !error) {
                         const user = {
-                            id: userData.id, email: userData.email, password: userData.password,
-                            firstName: userData.first_name || '', lastName: userData.last_name || '',
+                            id: userData.id, username: userData.username, password: userData.password,
                             phone: userData.phone, role: userData.role, teamId: userData.team_id,
                             playerId: userData.player_id, createdAt: userData.created_at,
                             createdBy: userData.created_by, orgId: userData.org_id
                         };
                         
-                        state.currentUser = user;
-                        
-                        // Check for league memberships
-                        const leagues = await getUserLeagues(user.id);
-                        state.userLeagues = leagues;
-                        
-                        // Get saved league selection
-                        const savedLeague = localStorage.getItem('plm_selected_league');
-                        let selectedLeague = null;
-                        
-                        if (savedLeague) {
-                            try {
-                                const { leagueId, orgId } = JSON.parse(savedLeague);
-                                // Find the matching league in user's leagues
-                                selectedLeague = leagues.find(l => 
-                                    (leagueId && l.leagueId === leagueId) || 
-                                    (orgId && l.orgId === orgId)
-                                );
-                            } catch (e) {
-                                console.log('Error parsing saved league:', e);
+                        // Load organization
+                        if (user.orgId) {
+                            const { data: org } = await db.from('organizations')
+                                .select('*')
+                                .eq('id', user.orgId)
+                                .single();
+                            
+                            if (org) {
+                                state.organization = {
+                                    id: org.id,
+                                    name: org.name,
+                                    slug: org.slug,
+                                    subscriptionStatus: org.subscription_status,
+                                    subscriptionTier: org.subscription_tier,
+                                    billingInterval: org.billing_interval,
+                                    trialEndsAt: org.trial_ends_at,
+                                    maxTeams: org.max_teams,
+                                    maxUsers: org.max_users,
+                                    maxSeasons: org.max_seasons
+                                };
+                                
+                                // Check subscription
+                                if (checkSubscriptionValid()) {
+                                    state.currentUser = user;
+                                    await loadAllData();
+                                } else {
+                                    localStorage.removeItem('plm_session');
+                                    alert('Your subscription has expired. Please contact your administrator to renew.');
+                                }
                             }
-                        }
-                        
-                        if (leagues.length === 0) {
-                            // Fall back to legacy org_id method
-                            if (user.orgId) {
-                                await loadOrganizationAndData(user.orgId);
-                            } else {
-                                localStorage.removeItem('plm_session');
-                                alert('No league access found. Contact your league administrator.');
-                            }
-                        } else if (leagues.length === 1) {
-                            // Auto-select the only league
-                            await selectLeague(leagues[0]);
-                        } else if (selectedLeague) {
-                            // Use saved league selection
-                            await selectLeague(selectedLeague);
-                        } else {
-                            // Multiple leagues, no saved selection - show selector
-                            state.showLeagueSelector = true;
                         }
                     } else {
                         localStorage.removeItem('plm_session');
-                        localStorage.removeItem('plm_selected_league');
                     }
                 } catch (e) {
                     console.error('Session restore error:', e);
                     localStorage.removeItem('plm_session');
-                    localStorage.removeItem('plm_selected_league');
                 }
             }
 
@@ -7269,7 +6135,6 @@
         window.state = state;
         window.render = render;
         window.logout = logout;
-        window.selectLeague = selectLeague;
         window.submitScores = submitScores;
         window.generateSchedule = generateSchedule;
         window.deleteScheduleMatch = deleteScheduleMatch;
@@ -7277,10 +6142,6 @@
         window.deleteTeam = deleteTeam;
         window.setTeamCaptain = setTeamCaptain;
         window.deleteUser = deleteUser;
-        window.editUser = editUser;
-        window.saveUser = saveUser;
-        window.cancelEditUser = cancelEditUser;
-        window.updateEditingUser = updateEditingUser;
         window.assignTeam = assignTeam;
         window.removePlayer = removePlayer;
         window.approveSubmission = approveSubmission;
