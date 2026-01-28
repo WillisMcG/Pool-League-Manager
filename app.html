@@ -135,6 +135,11 @@
             // Organization (multi-tenant)
             organization: null,
             
+            // Multi-league support
+            userLeagues: [],        // All leagues user has access to
+            selectedLeague: null,   // Currently selected league
+            showLeagueSelector: false, // Show league picker modal
+            
             // Core data
             users: [],
             teams: [],
@@ -729,7 +734,8 @@
                     .eq('org_id', orgId);
                 console.log('Users:', users, usersError);
                 state.users = (users || []).map(u => ({
-                    id: u.id, username: u.username, password: u.password, phone: u.phone,
+                    id: u.id, email: u.email, password: u.password, phone: u.phone,
+                    firstName: u.first_name || '', lastName: u.last_name || '',
                     role: u.role, teamId: u.team_id, playerId: u.player_id,
                     createdAt: u.created_at, createdBy: u.created_by, orgId: u.org_id
                 }));
@@ -1296,13 +1302,21 @@
         // ============================================
         // AUTH FUNCTIONS
         // ============================================
-        async function login(username, password) {
+        
+        // Helper function to get display name for a user
+        function getUserDisplayName(user) {
+            if (!user) return 'Unknown';
+            const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+            return fullName || user.email || 'Unknown';
+        }
+        
+        async function login(email, password) {
             showLoading();
             try {
-                // Find user by username and password
+                // Find user by email and password
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('username', username)
+                    .eq('email', email)
                     .eq('password', password)
                     .limit(1);
                 
@@ -1314,42 +1328,12 @@
                 
                 const userData = users[0];
                 const user = {
-                    id: userData.id, username: userData.username, password: userData.password,
+                    id: userData.id, email: userData.email, password: userData.password,
+                    firstName: userData.first_name || '', lastName: userData.last_name || '',
                     phone: userData.phone, role: userData.role, teamId: userData.team_id,
                     playerId: userData.player_id, createdAt: userData.created_at,
                     createdBy: userData.created_by, orgId: userData.org_id
                 };
-                
-                // Load the user's organization
-                if (user.orgId) {
-                    const { data: org, error: orgError } = await db.from('organizations')
-                        .select('*')
-                        .eq('id', user.orgId)
-                        .single();
-                    
-                    if (orgError) throw orgError;
-                    
-                    state.organization = {
-                        id: org.id,
-                        name: org.name,
-                        slug: org.slug,
-                        subscriptionStatus: org.subscription_status,
-                        subscriptionTier: org.subscription_tier,
-                        billingInterval: org.billing_interval,
-                        trialEndsAt: org.trial_ends_at,
-                        maxTeams: org.max_teams,
-                        maxUsers: org.max_users,
-                        maxSeasons: org.max_seasons
-                    };
-                    
-                    // Check subscription status
-                    const isValid = checkSubscriptionValid();
-                    if (!isValid) {
-                        hideLoading();
-                        alert('Your subscription has expired. Please contact your administrator to renew.');
-                        return false;
-                    }
-                }
                 
                 state.currentUser = user;
                 localStorage.setItem('plm_session', JSON.stringify({ id: user.id }));
@@ -1364,8 +1348,30 @@
                     console.log('Login tracking not available:', e);
                 }
                 
-                // Load all org data
-                await loadAllData();
+                // Check for league memberships (new multi-league system)
+                const leagues = await getUserLeagues(user.id);
+                
+                if (leagues.length === 0) {
+                    // Fall back to legacy org_id method
+                    if (user.orgId) {
+                        await loadOrganizationAndData(user.orgId);
+                    } else {
+                        hideLoading();
+                        alert('No league access found. Contact your league administrator.');
+                        return false;
+                    }
+                } else if (leagues.length === 1) {
+                    // Auto-select the only league
+                    state.userLeagues = leagues;
+                    await selectLeague(leagues[0]);
+                } else {
+                    // Multiple leagues - show selector
+                    state.userLeagues = leagues;
+                    state.showLeagueSelector = true;
+                    hideLoading();
+                    render();
+                    return true; // Login successful, but need league selection
+                }
                 
                 render();
                 return true;
@@ -1374,6 +1380,194 @@
                 hideLoading();
                 return false;
             }
+        }
+        
+        // Get all leagues a user has access to
+        async function getUserLeagues(userId) {
+            try {
+                // First try the new league_memberships table
+                const { data: memberships, error } = await db.from('league_memberships')
+                    .select(`
+                        id,
+                        league_id,
+                        team_id,
+                        role,
+                        is_active,
+                        leagues:league_id (
+                            id,
+                            name,
+                            organization_id,
+                            organizations:organization_id (
+                                id,
+                                name,
+                                slug,
+                                subscription_status,
+                                subscription_tier
+                            )
+                        ),
+                        teams:team_id (
+                            id,
+                            name
+                        )
+                    `)
+                    .eq('user_id', userId)
+                    .eq('is_active', true);
+                
+                if (error) {
+                    console.log('League memberships table not found, using legacy method');
+                    return await getUserLeaguesLegacy(userId);
+                }
+                
+                if (!memberships || memberships.length === 0) {
+                    return await getUserLeaguesLegacy(userId);
+                }
+                
+                return memberships.map(m => ({
+                    membershipId: m.id,
+                    leagueId: m.leagues?.id || m.league_id,
+                    leagueName: m.leagues?.name || 'Unknown League',
+                    orgId: m.leagues?.organization_id,
+                    orgName: m.leagues?.organizations?.name || 'Unknown Organization',
+                    teamId: m.team_id,
+                    teamName: m.teams?.name || null,
+                    role: m.role,
+                    subscriptionStatus: m.leagues?.organizations?.subscription_status
+                }));
+            } catch (e) {
+                console.log('Error loading league memberships:', e);
+                return await getUserLeaguesLegacy(userId);
+            }
+        }
+        
+        // Legacy method: get leagues from user's org_id
+        async function getUserLeaguesLegacy(userId) {
+            const user = state.users.find(u => u.id === userId) || state.currentUser;
+            if (!user?.orgId) return [];
+            
+            try {
+                // Get all leagues in user's org
+                const { data: leagues } = await db.from('leagues')
+                    .select('*, organizations:organization_id(*)')
+                    .eq('organization_id', user.orgId);
+                
+                if (!leagues || leagues.length === 0) {
+                    // No leagues table, treat org as single league
+                    const { data: org } = await db.from('organizations')
+                        .select('*')
+                        .eq('id', user.orgId)
+                        .single();
+                    
+                    if (org) {
+                        return [{
+                            leagueId: null, // No separate league, just org
+                            leagueName: org.name,
+                            orgId: org.id,
+                            orgName: org.name,
+                            teamId: user.teamId,
+                            teamName: null,
+                            role: user.role,
+                            subscriptionStatus: org.subscription_status,
+                            isLegacy: true
+                        }];
+                    }
+                }
+                
+                return (leagues || []).map(l => ({
+                    leagueId: l.id,
+                    leagueName: l.name,
+                    orgId: l.organization_id,
+                    orgName: l.organizations?.name || 'Unknown',
+                    teamId: user.teamId,
+                    teamName: null,
+                    role: user.role,
+                    subscriptionStatus: l.organizations?.subscription_status
+                }));
+            } catch (e) {
+                console.log('Error in legacy league lookup:', e);
+                return [];
+            }
+        }
+        
+        // Select a league and load its data
+        async function selectLeague(league) {
+            showLoading();
+            try {
+                state.selectedLeague = league;
+                state.showLeagueSelector = false;
+                
+                // Update user's team context if specified in membership
+                if (league.teamId && state.currentUser) {
+                    state.currentUser.teamId = league.teamId;
+                }
+                
+                // Update user's role context if specified
+                if (league.role && state.currentUser) {
+                    // Map membership role to app role
+                    if (league.role === 'captain') {
+                        state.currentUser.role = 'captain';
+                    } else if (league.role === 'player') {
+                        state.currentUser.role = 'player';
+                    }
+                    // admin/owner roles preserved from user record
+                }
+                
+                // Load organization and all data
+                await loadOrganizationAndData(league.orgId, league.leagueId);
+                
+                // Save league selection for session restore
+                localStorage.setItem('plm_selected_league', JSON.stringify({
+                    leagueId: league.leagueId,
+                    orgId: league.orgId
+                }));
+                
+                render();
+            } catch (error) {
+                console.error('Error selecting league:', error);
+                alert('Error loading league data');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Load organization and optionally filter by league
+        async function loadOrganizationAndData(orgId, leagueId = null) {
+            const { data: org, error: orgError } = await db.from('organizations')
+                .select('*')
+                .eq('id', orgId)
+                .single();
+            
+            if (orgError) throw orgError;
+            
+            state.organization = {
+                id: org.id,
+                name: org.name,
+                slug: org.slug,
+                subscriptionStatus: org.subscription_status,
+                subscriptionTier: org.subscription_tier,
+                billingInterval: org.billing_interval,
+                trialEndsAt: org.trial_ends_at,
+                maxTeams: org.max_teams,
+                maxUsers: org.max_users,
+                maxSeasons: org.max_seasons
+            };
+            
+            // Store league filter if specified
+            if (leagueId) {
+                state.selectedLeague = state.selectedLeague || {};
+                state.selectedLeague.leagueId = leagueId;
+            }
+            
+            // Check subscription status
+            const isValid = checkSubscriptionValid();
+            if (!isValid) {
+                hideLoading();
+                alert('Your subscription has expired. Please contact your administrator to renew.');
+                return false;
+            }
+            
+            // Load all org data
+            await loadAllData();
+            return true;
         }
         
         function checkSubscriptionValid() {
@@ -1395,15 +1589,19 @@
 
         function logout() {
             state.currentUser = null;
+            state.userLeagues = [];
+            state.selectedLeague = null;
+            state.showLeagueSelector = false;
             state.activeTab = 'schedule';
             localStorage.removeItem('plm_session');
+            localStorage.removeItem('plm_selected_league');
             render();
         }
 
-        async function createAccount(username, password, phone, role = null, teamId = null) {
-            if (!username || !password) { alert('Username and password required'); return false; }
+        async function createAccount(email, password, phone, role = null, teamId = null, firstName = '', lastName = '') {
+            if (!email || !password) { alert('Email and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
-            if (state.users.find(u => u.username === username)) { alert('Username already exists'); return false; }
+            if (state.users.find(u => u.email === email)) { alert('Email already exists'); return false; }
             if (!state.organization?.id) { alert('No organization loaded'); return false; }
 
             showLoading();
@@ -1412,7 +1610,9 @@
                 const finalRole = role || 'player';
                 
                 const { data, error } = await db.from('users').insert([{
-                    username, password, phone,
+                    email, password, phone,
+                    first_name: firstName || null,
+                    last_name: lastName || null,
                     role: finalRole,
                     team_id: teamId || null,
                     org_id: state.organization.id,
@@ -1422,14 +1622,16 @@
                 if (error) throw error;
 
                 const user = {
-                    id: data.id, username: data.username, password: data.password,
+                    id: data.id, email: data.email, password: data.password,
+                    firstName: data.first_name || '', lastName: data.last_name || '',
                     phone: data.phone, role: data.role, teamId: data.team_id,
                     createdAt: data.created_at, createdBy: data.created_by, orgId: data.org_id
                 };
 
                 state.users = [...state.users, user];
 
-                alert('User "' + username + '" created as ' + finalRole + '!');
+                const displayName = [firstName, lastName].filter(Boolean).join(' ') || email;
+                alert('User "' + displayName + '" created as ' + finalRole + '!');
                 render();
                 return true;
             } catch (error) {
@@ -1444,7 +1646,7 @@
         async function deleteUser(userId) {
             if (userId === state.currentUser.id) { alert('Cannot delete yourself'); return; }
             const user = state.users.find(u => u.id === userId);
-            if (!confirm(`Delete user "${user.username}"?`)) return;
+            if (!confirm(`Delete user "${getUserDisplayName(user)}"?`)) return;
 
             showLoading();
             try {
@@ -1463,7 +1665,8 @@
             const user = state.users.find(u => u.id === userId);
             if (!user) return;
             
-            const newPassword = prompt(`Enter new password for "${user.username}":\n\n(Minimum 4 characters)`);
+            const displayName = getUserDisplayName(user);
+            const newPassword = prompt(`Enter new password for "${displayName}":\n\n(Minimum 4 characters)`);
             if (!newPassword) return;
             if (newPassword.length < 4) { alert('Password must be at least 4 characters'); return; }
             
@@ -1471,7 +1674,7 @@
             try {
                 await db.from('users').update({ password: newPassword }).eq('id', userId);
                 state.users = state.users.map(u => u.id === userId ? { ...u, password: newPassword } : u);
-                alert(`Password reset for "${user.username}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
+                alert(`Password reset for "${displayName}"!\n\nNew password: ${newPassword}\n\nShare this with the user.`);
                 render();
             } catch (error) {
                 console.error('Error resetting password:', error);
@@ -1481,21 +1684,21 @@
             }
         }
 
-        async function selfServiceReset(username, phone) {
-            if (!username || !phone) { alert('Username and phone required'); return false; }
+        async function selfServiceReset(email, phone) {
+            if (!email || !phone) { alert('Email and phone required'); return false; }
             
             showLoading();
             try {
-                // Look up user by username and verify phone
+                // Look up user by email and verify phone
                 const { data: users, error } = await db.from('users')
                     .select('*')
-                    .eq('username', username)
+                    .eq('email', email)
                     .limit(1);
                 
                 if (error) throw error;
                 
                 if (!users || users.length === 0) {
-                    alert('Username not found');
+                    alert('Email not found');
                     return false;
                 }
                 
@@ -1563,9 +1766,9 @@
                 
                 state.teams = [...state.teams, newTeam];
 
-                // Auto-assign captain to this team
+                // Auto-assign captain to this team (captain here is an email)
                 if (captain) {
-                    const captainUser = state.users.find(u => u.username === captain);
+                    const captainUser = state.users.find(u => u.email === captain);
                     if (captainUser) {
                         await db.from('users').update({ team_id: newTeam.id }).eq('id', captainUser.id);
                         state.users = state.users.map(u => u.id === captainUser.id ? { ...u, teamId: newTeam.id } : u);
@@ -1624,21 +1827,21 @@
                 // Find the player object to get their ID
                 const player = team.players.find(p => p.name === captainName);
                 
-                // Find the corresponding user (by playerId or matching username)
+                // Find the corresponding user (by playerId or matching email/name)
                 let captainUser = null;
                 if (player) {
                     captainUser = state.users.find(u => u.playerId === player.id);
                 }
                 if (!captainUser) {
-                    // Fallback: try to find user by matching username to player name
-                    captainUser = state.users.find(u => u.username === captainName);
+                    // Fallback: try to find user by matching email or name
+                    captainUser = state.users.find(u => u.email === captainName || getUserDisplayName(u) === captainName);
                 }
                 
                 // Update user's role to 'captain' if found and not already admin
                 if (captainUser && captainUser.role !== 'admin') {
                     await db.from('users').update({ role: 'captain' }).eq('id', captainUser.id);
                     state.users = state.users.map(u => u.id === captainUser.id ? { ...u, role: 'captain' } : u);
-                    console.log(`Updated ${captainUser.username} role to captain`);
+                    console.log(`Updated ${getUserDisplayName(captainUser)} role to captain`);
                 }
                 
                 render();
@@ -2684,7 +2887,7 @@
                         
                         <!-- Login Form -->
                         <div id="login-form" class="space-y-4">
-                            <input type="text" id="login-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <input type="email" id="login-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="password" id="login-password" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <div id="login-error" class="hidden bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
                             <button onclick="handleLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-4 rounded-lg hover:from-emerald-700 hover:to-teal-700">
@@ -2697,8 +2900,8 @@
                         
                         <!-- Reset Password Form (hidden by default) -->
                         <div id="reset-form" class="space-y-4 hidden">
-                            <p class="text-sm text-slate-600 text-center mb-4">Enter your username and phone number to reset your password.</p>
-                            <input type="text" id="reset-username" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
+                            <p class="text-sm text-slate-600 text-center mb-4">Enter your email and phone number to reset your password.</p>
+                            <input type="email" id="reset-email" placeholder="Email" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <input type="tel" id="reset-phone" placeholder="Phone number on file" class="w-full px-4 py-3 border-2 border-slate-300 rounded-lg">
                             <button onclick="handleSelfReset()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-lg hover:from-yellow-600 hover:to-orange-600">
                                 🔑 Reset Password
@@ -2738,6 +2941,15 @@
                 }
             }
             
+            // League switcher for multi-league users
+            const hasMultipleLeagues = state.userLeagues && state.userLeagues.length > 1;
+            const leagueSwitcher = hasMultipleLeagues ? `
+                <button onclick="state.showLeagueSelector = true; render();" 
+                    class="p-2 bg-white/20 hover:bg-white/30 rounded-lg" title="Switch League">
+                    🔄
+                </button>
+            ` : '';
+            
             return `
                 <header class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 text-white shadow-2xl">
                     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -2762,8 +2974,9 @@
                         <div class="flex items-center gap-3">
                             <div class="text-right text-sm">
                                 <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.username}</div>
+                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${getUserDisplayName(state.currentUser)}</div>
                             </div>
+                            ${leagueSwitcher}
                             <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
                         </div>
                     </div>
@@ -4873,7 +5086,7 @@
             // Get captains not already assigned to a team
             const assignedCaptains = state.teams.map(t => t.captain).filter(c => c);
             const availableCaptains = state.users.filter(u => 
-                u.role === 'captain' && !assignedCaptains.includes(u.username)
+                u.role === 'captain' && !assignedCaptains.includes(u.email) && !assignedCaptains.includes(getUserDisplayName(u))
             );
             
             return `
@@ -4944,7 +5157,7 @@
                                 <label class="block text-sm font-bold mb-1">Captain</label>
                                 <select id="team-captain" class="w-full px-4 py-2 border-2 rounded-lg">
                                     <option value="">Select captain...</option>
-                                    ${availableCaptains.map(c => `<option value="${c.username}">${c.username}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
+                                    ${availableCaptains.map(c => `<option value="${c.email}">${getUserDisplayName(c)}${c.phone ? ' (' + c.phone + ')' : ''}</option>`).join('')}
                                 </select>
                                 ${availableCaptains.length === 0 ? '<p class="text-xs text-orange-600 mt-1">⚠️ No available captains (create users or unassign existing)</p>' : ''}
                             </div>
@@ -5041,7 +5254,11 @@
                     <div class="bg-white rounded-xl shadow-lg p-6">
                         <button onclick="document.getElementById('create-user-form').classList.toggle('hidden')" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">➕ ${isCaptain ? 'Add Team Member' : 'Create User'}</button>
                         <div id="create-user-form" class="hidden mt-4 space-y-3 border-t pt-4">
-                            <input type="text" id="new-username" placeholder="Username" class="w-full px-4 py-2 border-2 rounded-lg">
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="text" id="new-firstname" placeholder="First Name" class="w-full px-4 py-2 border-2 rounded-lg">
+                                <input type="text" id="new-lastname" placeholder="Last Name" class="w-full px-4 py-2 border-2 rounded-lg">
+                            </div>
+                            <input type="email" id="new-email" placeholder="Email" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="password" id="new-password" placeholder="Password" class="w-full px-4 py-2 border-2 rounded-lg">
                             <input type="tel" id="new-phone" placeholder="Phone" class="w-full px-4 py-2 border-2 rounded-lg">
                             ${isAdmin ? `
@@ -5065,11 +5282,13 @@
                         ${visibleUsers.map(user => {
                             const team = state.teams.find(t => t.id === user.teamId);
                             const roleIcon = user.role === 'admin' ? '🛡️' : (user.role === 'captain' ? '©️' : '👤');
+                            const displayName = getUserDisplayName(user);
                             return `
                             <div class="p-4 flex items-center gap-4 ${user.id === state.currentUser.id ? 'bg-emerald-50' : ''}">
                                 <div class="text-3xl">${roleIcon}</div>
                                 <div class="flex-1">
-                                    <div class="font-bold">${user.username} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
+                                    <div class="font-bold">${displayName} ${user.id === state.currentUser.id ? '<span class="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</div>
+                                    <div class="text-sm text-slate-500">${user.email || ''}</div>
                                     <div class="text-sm text-slate-600">${user.role} ${team ? '• ' + team.name : ''}</div>
                                     ${user.phone ? '<div class="text-sm"><a href="tel:' + user.phone.replace(/[^0-9+]/g, '') + '" class="text-blue-600 hover:underline">📞 ' + user.phone + '</a></div>' : ''}
                                 </div>
@@ -5663,23 +5882,25 @@
         // EVENT HANDLERS (attach to window for onclick)
         // ============================================
         window.handleLogin = async function() {
-            const username = document.getElementById('login-username').value;
+            const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
 
-            if (!username || !password) {
-                document.getElementById('login-error').textContent = 'Please enter username and password';
+            if (!email || !password) {
+                document.getElementById('login-error').textContent = 'Please enter email and password';
                 document.getElementById('login-error').classList.remove('hidden');
                 return;
             }
 
-            if (!await login(username, password)) {
+            if (!await login(email, password)) {
                 document.getElementById('login-error').textContent = 'Invalid credentials';
                 document.getElementById('login-error').classList.remove('hidden');
             }
         };
 
         window.handleCreateUser = async function() {
-            const username = document.getElementById('new-username').value;
+            const firstName = document.getElementById('new-firstname').value;
+            const lastName = document.getElementById('new-lastname').value;
+            const email = document.getElementById('new-email').value;
             const password = document.getElementById('new-password').value;
             const phone = document.getElementById('new-phone').value;
             
@@ -5700,8 +5921,10 @@
                 teamId = state.currentUser.teamId;
             }
             
-            if (await createAccount(username, password, phone, role, teamId)) {
-                document.getElementById('new-username').value = '';
+            if (await createAccount(email, password, phone, role, teamId, firstName, lastName)) {
+                document.getElementById('new-firstname').value = '';
+                document.getElementById('new-lastname').value = '';
+                document.getElementById('new-email').value = '';
                 document.getElementById('new-password').value = '';
                 document.getElementById('new-phone').value = '';
                 if (roleSelect) roleSelect.value = 'player';
@@ -5756,10 +5979,10 @@
         };
         
         window.handleSelfReset = async function() {
-            const username = document.getElementById('reset-username').value;
+            const email = document.getElementById('reset-email').value;
             const phone = document.getElementById('reset-phone').value;
-            if (await selfServiceReset(username, phone)) {
-                document.getElementById('reset-username').value = '';
+            if (await selfServiceReset(email, phone)) {
+                document.getElementById('reset-email').value = '';
                 document.getElementById('reset-phone').value = '';
                 showLoginForm();
             }
@@ -5800,6 +6023,8 @@
             const app = document.getElementById('app');
             if (!window.state.currentUser) {
                 app.innerHTML = renderLoginScreen();
+            } else if (window.state.showLeagueSelector) {
+                app.innerHTML = renderLeagueSelector();
             } else {
                 const tabs = { schedule: renderSchedule, submit: renderSubmitScores, standings: renderStandings, players: renderPlayerStats, history: renderHistory, teams: renderTeams, users: renderUsers, admin: renderAdmin, settings: renderSettings };
                 app.innerHTML = `
@@ -5810,6 +6035,48 @@
                     </div>
                 `;
             }
+        }
+        
+        // League selector for users in multiple leagues
+        function renderLeagueSelector() {
+            const leagues = state.userLeagues || [];
+            const displayName = getUserDisplayName(state.currentUser);
+            
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg border-4 border-emerald-700">
+                        <div class="text-center mb-6">
+                            <div class="text-5xl mb-3">🎱</div>
+                            <h1 class="text-2xl font-black text-slate-800">Welcome, ${displayName}!</h1>
+                            <p class="text-slate-600 mt-2">Select a league to continue</p>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            ${leagues.map(league => `
+                                <button onclick="selectLeague(${JSON.stringify(league).replace(/"/g, '&quot;')})" 
+                                    class="w-full p-4 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border-2 border-emerald-200 rounded-xl text-left transition-all hover:shadow-md">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <div class="font-bold text-lg text-emerald-800">${league.leagueName}</div>
+                                            <div class="text-sm text-slate-600">${league.orgName}</div>
+                                            ${league.teamName ? `<div class="text-xs text-emerald-600 mt-1">🏠 ${league.teamName}</div>` : ''}
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">${league.role || 'Member'}</span>
+                                        </div>
+                                    </div>
+                                </button>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="mt-6 pt-4 border-t text-center">
+                            <button onclick="logout()" class="text-slate-500 hover:text-slate-700 text-sm">
+                                ← Sign out and use a different account
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         // ============================================
@@ -5823,7 +6090,7 @@
                 try {
                     const { id } = JSON.parse(session);
                     
-                    // Load user and their organization
+                    // Load user
                     const { data: userData, error } = await db.from('users')
                         .select('*')
                         .eq('id', id)
@@ -5831,49 +6098,62 @@
                     
                     if (userData && !error) {
                         const user = {
-                            id: userData.id, username: userData.username, password: userData.password,
+                            id: userData.id, email: userData.email, password: userData.password,
+                            firstName: userData.first_name || '', lastName: userData.last_name || '',
                             phone: userData.phone, role: userData.role, teamId: userData.team_id,
                             playerId: userData.player_id, createdAt: userData.created_at,
                             createdBy: userData.created_by, orgId: userData.org_id
                         };
                         
-                        // Load organization
-                        if (user.orgId) {
-                            const { data: org } = await db.from('organizations')
-                                .select('*')
-                                .eq('id', user.orgId)
-                                .single();
-                            
-                            if (org) {
-                                state.organization = {
-                                    id: org.id,
-                                    name: org.name,
-                                    slug: org.slug,
-                                    subscriptionStatus: org.subscription_status,
-                                    subscriptionTier: org.subscription_tier,
-                                    billingInterval: org.billing_interval,
-                                    trialEndsAt: org.trial_ends_at,
-                                    maxTeams: org.max_teams,
-                                    maxUsers: org.max_users,
-                                    maxSeasons: org.max_seasons
-                                };
-                                
-                                // Check subscription
-                                if (checkSubscriptionValid()) {
-                                    state.currentUser = user;
-                                    await loadAllData();
-                                } else {
-                                    localStorage.removeItem('plm_session');
-                                    alert('Your subscription has expired. Please contact your administrator to renew.');
-                                }
+                        state.currentUser = user;
+                        
+                        // Check for league memberships
+                        const leagues = await getUserLeagues(user.id);
+                        state.userLeagues = leagues;
+                        
+                        // Get saved league selection
+                        const savedLeague = localStorage.getItem('plm_selected_league');
+                        let selectedLeague = null;
+                        
+                        if (savedLeague) {
+                            try {
+                                const { leagueId, orgId } = JSON.parse(savedLeague);
+                                // Find the matching league in user's leagues
+                                selectedLeague = leagues.find(l => 
+                                    (leagueId && l.leagueId === leagueId) || 
+                                    (orgId && l.orgId === orgId)
+                                );
+                            } catch (e) {
+                                console.log('Error parsing saved league:', e);
                             }
+                        }
+                        
+                        if (leagues.length === 0) {
+                            // Fall back to legacy org_id method
+                            if (user.orgId) {
+                                await loadOrganizationAndData(user.orgId);
+                            } else {
+                                localStorage.removeItem('plm_session');
+                                alert('No league access found. Contact your league administrator.');
+                            }
+                        } else if (leagues.length === 1) {
+                            // Auto-select the only league
+                            await selectLeague(leagues[0]);
+                        } else if (selectedLeague) {
+                            // Use saved league selection
+                            await selectLeague(selectedLeague);
+                        } else {
+                            // Multiple leagues, no saved selection - show selector
+                            state.showLeagueSelector = true;
                         }
                     } else {
                         localStorage.removeItem('plm_session');
+                        localStorage.removeItem('plm_selected_league');
                     }
                 } catch (e) {
                     console.error('Session restore error:', e);
                     localStorage.removeItem('plm_session');
+                    localStorage.removeItem('plm_selected_league');
                 }
             }
 
@@ -5889,6 +6169,7 @@
         window.state = state;
         window.render = render;
         window.logout = logout;
+        window.selectLeague = selectLeague;
         window.submitScores = submitScores;
         window.generateSchedule = generateSchedule;
         window.deleteScheduleMatch = deleteScheduleMatch;
