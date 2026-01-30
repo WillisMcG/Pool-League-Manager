@@ -1731,27 +1731,31 @@
         async function selectUpgradePlan(plan) {
             const priceId = STRIPE_PRICES[plan][state.upgradeBillingPeriod];
             
+            // Check we have a logged in user and organization
+            if (!state.currentUser || !state.organization) {
+                alert('Please log in to upgrade your plan');
+                return;
+            }
+            
             showLoading();
             
             try {
-                // Get the current Supabase session
-                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-                
-                if (sessionError || !session) {
-                    throw new Error('Please log in again to upgrade your plan');
-                }
-                
                 // Call Supabase Edge Function to create checkout session
+                // Using custom auth - send user_id and org_id in body
                 const response = await fetch(SUPABASE_URL + '/functions/v1/create-checkout-session', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + session.access_token
+                        'Authorization': 'Bearer ' + SUPABASE_KEY
                     },
                     body: JSON.stringify({
                         priceId: priceId,
                         plan: plan,
                         interval: state.upgradeBillingPeriod,
+                        userId: state.currentUser.id,
+                        orgId: state.organization.id,
+                        userEmail: state.currentUser.email,
+                        orgName: state.organization.name,
                         successUrl: window.location.origin + '/app.html?checkout=success',
                         cancelUrl: window.location.origin + '/app.html?checkout=cancelled'
                     })
