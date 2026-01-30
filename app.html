@@ -1569,14 +1569,28 @@
         async function updateProfile() {
             const email = document.getElementById('profile-email').value.trim();
             const phone = document.getElementById('profile-phone').value.trim();
+            const passwordConfirm = document.getElementById('profile-password-confirm').value;
             
             if (!email) {
                 alert('Email is required');
                 return;
             }
             
+            if (!passwordConfirm) {
+                alert('Please enter your password to save changes');
+                return;
+            }
+            
+            // Verify password
+            if (passwordConfirm !== state.currentUser.password) {
+                alert('Incorrect password');
+                return;
+            }
+            
+            const emailChanged = email !== state.currentUser.email;
+            
             // Check if email changed and if it's already taken
-            if (email !== state.currentUser.email) {
+            if (emailChanged) {
                 const existingUser = state.users.find(u => u.email === email && u.id !== state.currentUser.id);
                 if (existingUser) {
                     alert('This email is already in use');
@@ -1604,7 +1618,15 @@
                 }
                 
                 hideLoading();
-                alert('Profile updated successfully!');
+                
+                // Clear password field
+                document.getElementById('profile-password-confirm').value = '';
+                
+                if (emailChanged) {
+                    alert('Profile updated successfully!\\n\\nYour email has been changed to: ' + email + '\\n\\nPlease use this email to log in next time.');
+                } else {
+                    alert('Profile updated successfully!');
+                }
                 render();
             } catch (err) {
                 hideLoading();
@@ -3073,11 +3095,17 @@
                                     <label class="block text-sm font-semibold text-slate-600 mb-1">Email</label>
                                     <input type="email" id="profile-email" value="${state.currentUser.email || ''}" 
                                         class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Email">
+                                    <p class="text-xs text-slate-500 mt-1">⚠️ Changing email requires password confirmation</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-semibold text-slate-600 mb-1">Phone</label>
                                     <input type="tel" id="profile-phone" value="${state.currentUser.phone || ''}" 
                                         class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Phone number">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">Password <span class="text-slate-400 font-normal">(required to save changes)</span></label>
+                                    <input type="password" id="profile-password-confirm" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Enter your password">
                                 </div>
                                 <button onclick="updateProfile()" class="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700">
                                     💾 Save Changes
