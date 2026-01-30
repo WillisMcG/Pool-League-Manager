@@ -154,6 +154,7 @@
             showManageSeasons: false,
             showArchivedSeasons: false,
             showFullSchedule: false,
+            showProfileModal: false,
             selectedHistoryMatch: null,
             standingsAdjustments: {}, // { teamId: { wins: +/- num, losses: +/- num, gamesWon: +/- num, gamesLost: +/- num } }
             editingStandings: false,
@@ -1555,6 +1556,121 @@
             render();
         }
 
+        function openProfileModal() {
+            state.showProfileModal = true;
+            render();
+        }
+        
+        function closeProfileModal() {
+            state.showProfileModal = false;
+            render();
+        }
+        
+        async function updateProfile() {
+            const email = document.getElementById('profile-email').value.trim();
+            const phone = document.getElementById('profile-phone').value.trim();
+            
+            if (!email) {
+                alert('Email is required');
+                return;
+            }
+            
+            // Check if email changed and if it's already taken
+            if (email !== state.currentUser.email) {
+                const existingUser = state.users.find(u => u.email === email && u.id !== state.currentUser.id);
+                if (existingUser) {
+                    alert('This email is already in use');
+                    return;
+                }
+            }
+            
+            showLoading();
+            try {
+                const { error } = await db.from('users')
+                    .update({ email, phone })
+                    .eq('id', state.currentUser.id);
+                
+                if (error) throw error;
+                
+                // Update local state
+                state.currentUser.email = email;
+                state.currentUser.phone = phone;
+                
+                // Update in users array
+                const userIndex = state.users.findIndex(u => u.id === state.currentUser.id);
+                if (userIndex !== -1) {
+                    state.users[userIndex].email = email;
+                    state.users[userIndex].phone = phone;
+                }
+                
+                hideLoading();
+                alert('Profile updated successfully!');
+                render();
+            } catch (err) {
+                hideLoading();
+                console.error('Error updating profile:', err);
+                alert('Failed to update profile: ' + err.message);
+            }
+        }
+        
+        async function changePassword() {
+            const currentPassword = document.getElementById('profile-current-password').value;
+            const newPassword = document.getElementById('profile-new-password').value;
+            const confirmPassword = document.getElementById('profile-confirm-password').value;
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                alert('Please fill in all password fields');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                alert('New passwords do not match');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                alert('New password must be at least 6 characters');
+                return;
+            }
+            
+            // Verify current password
+            if (currentPassword !== state.currentUser.password) {
+                alert('Current password is incorrect');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const { error } = await db.from('users')
+                    .update({ password: newPassword })
+                    .eq('id', state.currentUser.id);
+                
+                if (error) throw error;
+                
+                // Update local state
+                state.currentUser.password = newPassword;
+                
+                // Update in users array
+                const userIndex = state.users.findIndex(u => u.id === state.currentUser.id);
+                if (userIndex !== -1) {
+                    state.users[userIndex].password = newPassword;
+                }
+                
+                hideLoading();
+                
+                // Clear password fields
+                document.getElementById('profile-current-password').value = '';
+                document.getElementById('profile-new-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+                
+                alert('Password changed successfully!');
+            } catch (err) {
+                hideLoading();
+                console.error('Error changing password:', err);
+                alert('Failed to change password: ' + err.message);
+            }
+        }
+
         async function createAccount(username, password, phone, role = null, teamId = null) {
             if (!username || !password) { alert('Email and password required'); return false; }
             if (!phone || phone.length < 10) { alert('Valid phone number required (10+ digits)'); return false; }
@@ -2878,13 +2994,6 @@
                                 ← Back to Login
                             </button>
                         </div>
-                        
-                        <!-- Support Link -->
-                        <div class="mt-6 pt-4 border-t border-slate-200 text-center">
-                            <a href="mailto:support@pool-league-manager.com" class="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
-                                📧 Need help? Contact Support
-                            </a>
-                        </div>
                     </div>
                 </div>
             `;
@@ -2938,14 +3047,77 @@
                             ` : ''}
                         </div>
                         <div class="flex items-center gap-3">
-                            <div class="text-right text-sm">
+                            <button onclick="openProfileModal()" class="text-right text-sm hover:bg-white/10 p-2 rounded-lg transition-colors cursor-pointer">
                                 <div class="opacity-90">Logged in as</div>
-                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.email}</div>
-                            </div>
-                            <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg">🚪</button>
+                                <div class="font-bold">${state.currentUser.role === 'admin' ? '🛡️ ' : (state.currentUser.role === 'captain' ? '©️ ' : '👤 ')}${state.currentUser.email} ▼</div>
+                            </button>
+                            <button onclick="logout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-lg" title="Logout">🚪</button>
                         </div>
                     </div>
                 </header>
+                
+                <!-- Profile Modal -->
+                ${state.showProfileModal ? `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="if(event.target === this) closeProfileModal()">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 rounded-t-xl flex justify-between items-center">
+                            <h3 class="text-xl font-bold">👤 My Account</h3>
+                            <button onclick="closeProfileModal()" class="text-white/80 hover:text-white text-2xl">&times;</button>
+                        </div>
+                        
+                        <div class="p-6 space-y-6">
+                            <!-- User Info -->
+                            <div class="space-y-4">
+                                <h4 class="font-bold text-slate-700 border-b pb-2">Personal Information</h4>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">Email</label>
+                                    <input type="email" id="profile-email" value="${state.currentUser.email || ''}" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Email">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">Phone</label>
+                                    <input type="tel" id="profile-phone" value="${state.currentUser.phone || ''}" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Phone number">
+                                </div>
+                                <button onclick="updateProfile()" class="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700">
+                                    💾 Save Changes
+                                </button>
+                            </div>
+                            
+                            <!-- Change Password -->
+                            <div class="space-y-4">
+                                <h4 class="font-bold text-slate-700 border-b pb-2">Change Password</h4>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">Current Password</label>
+                                    <input type="password" id="profile-current-password" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Current password">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">New Password</label>
+                                    <input type="password" id="profile-new-password" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="New password">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-slate-600 mb-1">Confirm New Password</label>
+                                    <input type="password" id="profile-confirm-password" 
+                                        class="w-full px-3 py-2 border-2 border-slate-300 rounded-lg" placeholder="Confirm new password">
+                                </div>
+                                <button onclick="changePassword()" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700">
+                                    🔑 Change Password
+                                </button>
+                            </div>
+                            
+                            <!-- Support -->
+                            <div class="pt-4 border-t">
+                                <a href="mailto:support@pool-league-manager.com" 
+                                   class="flex items-center justify-center gap-2 w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-semibold">
+                                    📧 Contact Support
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
             `;
         }
 
@@ -6715,15 +6887,11 @@
                         ${renderHeader()}
                         ${renderNav()}
                         <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">${tabs[state.activeTab]?.() || ''}</main>
-                        <footer class="bg-slate-800 text-white py-6 mt-8">
-                            <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <footer class="bg-slate-800 text-white py-4 mt-8">
+                            <div class="max-w-7xl mx-auto px-4 text-center">
                                 <div class="text-sm text-slate-400">
                                     © ${new Date().getFullYear()} Pool League Manager
                                 </div>
-                                <a href="mailto:support@pool-league-manager.com" 
-                                   class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm font-semibold">
-                                    <span>📧</span> Contact Support
-                                </a>
                             </div>
                         </footer>
                     </div>
@@ -6808,6 +6976,10 @@
         window.state = state;
         window.render = render;
         window.logout = logout;
+        window.openProfileModal = openProfileModal;
+        window.closeProfileModal = closeProfileModal;
+        window.updateProfile = updateProfile;
+        window.changePassword = changePassword;
         window.submitScores = submitScores;
         window.generateSchedule = generateSchedule;
         window.deleteScheduleMatch = deleteScheduleMatch;
