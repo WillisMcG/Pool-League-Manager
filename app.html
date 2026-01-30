@@ -155,6 +155,8 @@
             showArchivedSeasons: false,
             showFullSchedule: false,
             showProfileModal: false,
+            showUpgradeModal: false,
+            upgradeBillingPeriod: 'monthly',
             selectedHistoryMatch: null,
             standingsAdjustments: {}, // { teamId: { wins: +/- num, losses: +/- num, gamesWon: +/- num, gamesLost: +/- num } }
             editingStandings: false,
@@ -1623,7 +1625,7 @@
                 document.getElementById('profile-password-confirm').value = '';
                 
                 if (emailChanged) {
-                    alert('Profile updated successfully!\\n\\nYour email has been changed to: ' + email + '\\n\\nPlease use this email to log in next time.');
+                    alert('Profile updated successfully!\n\nYour email has been changed to: ' + email + '\n\nPlease use this email to log in next time.');
                 } else {
                     alert('Profile updated successfully!');
                 }
@@ -1692,6 +1694,218 @@
                 alert('Failed to change password: ' + err.message);
             }
         }
+
+        // ==================== UPGRADE MODAL ====================
+        
+        const STRIPE_PRICES = {
+            basic: {
+                monthly: 'price_1SufNkDidS2jVuhaJ0LdyBVB',
+                annual: 'price_1SufNkDidS2jVuhao7pBgkgE'
+            },
+            pro: {
+                monthly: 'price_1SufOZDidS2jVuha7RkjyRXi',
+                annual: 'price_1SufOZDidS2jVuhakiQNABxz'
+            },
+            premium: {
+                monthly: 'price_1SufPkDidS2jVuhatY2mAZT1',
+                annual: 'price_1SufPkDidS2jVuham4wwGraF'
+            }
+        };
+        
+        function openUpgradeModal() {
+            state.showUpgradeModal = true;
+            state.upgradeBillingPeriod = 'monthly';
+            render();
+        }
+        
+        function closeUpgradeModal() {
+            state.showUpgradeModal = false;
+            render();
+        }
+        
+        function setUpgradeBilling(period) {
+            state.upgradeBillingPeriod = period;
+            render();
+        }
+        
+        async function selectUpgradePlan(plan) {
+            const priceId = STRIPE_PRICES[plan][state.upgradeBillingPeriod];
+            
+            showLoading();
+            
+            try {
+                // Get the current Supabase session
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                
+                if (sessionError || !session) {
+                    throw new Error('Please log in again to upgrade your plan');
+                }
+                
+                // Call Supabase Edge Function to create checkout session
+                const response = await fetch(SUPABASE_URL + '/functions/v1/create-checkout-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + session.access_token
+                    },
+                    body: JSON.stringify({
+                        priceId: priceId,
+                        plan: plan,
+                        interval: state.upgradeBillingPeriod,
+                        successUrl: window.location.origin + '/app.html?checkout=success',
+                        cancelUrl: window.location.origin + '/app.html?checkout=cancelled'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                hideLoading();
+                
+                if (data.url) {
+                    // Redirect to Stripe Checkout
+                    window.location.href = data.url;
+                } else if (data.error) {
+                    throw new Error(data.error);
+                } else {
+                    throw new Error('Failed to create checkout session');
+                }
+            } catch (error) {
+                hideLoading();
+                console.error('Checkout error:', error);
+                alert('Unable to start checkout: ' + error.message);
+            }
+        }
+        
+        function renderUpgradeModal() {
+            const period = state.upgradeBillingPeriod;
+            const currentTier = state.organization?.subscription_tier || 'trial';
+            
+            const prices = {
+                basic: period === 'monthly' ? { price: '5', period: '/month', note: '' } : { price: '54', period: '/year', note: '$4.50/mo' },
+                pro: period === 'monthly' ? { price: '10', period: '/month', note: '' } : { price: '108', period: '/year', note: '$9/mo' },
+                premium: period === 'monthly' ? { price: '20', period: '/month', note: '' } : { price: '216', period: '/year', note: '$18/mo' }
+            };
+            
+            const basicNoteHtml = prices.basic.note ? '<div class="text-sm text-emerald-600">' + prices.basic.note + '</div>' : '';
+            const proNoteHtml = prices.pro.note ? '<div class="text-sm text-emerald-600">' + prices.pro.note + '</div>' : '';
+            const premiumNoteHtml = prices.premium.note ? '<div class="text-sm text-emerald-600">' + prices.premium.note + '</div>' : '';
+            
+            const basicButton = currentTier === 'basic' 
+                ? '<div class="text-center py-3 bg-emerald-100 text-emerald-800 rounded-lg font-bold">Current Plan</div>'
+                : '<button onclick="selectUpgradePlan(\'basic\')" class="w-full py-3 bg-slate-600 text-white rounded-lg font-bold hover:bg-slate-700">Choose Basic</button>';
+            
+            const proButton = currentTier === 'pro' 
+                ? '<div class="text-center py-3 bg-emerald-100 text-emerald-800 rounded-lg font-bold">Current Plan</div>'
+                : '<button onclick="selectUpgradePlan(\'pro\')" class="w-full py-3 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700">Choose Pro</button>';
+            
+            const premiumButton = currentTier === 'premium' 
+                ? '<div class="text-center py-3 bg-orange-100 text-orange-800 rounded-lg font-bold">Current Plan</div>'
+                : '<button onclick="selectUpgradePlan(\'premium\')" class="w-full py-3 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600">Choose Premium</button>';
+            
+            return `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="if(event.target === this) closeUpgradeModal()">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-6 rounded-t-2xl">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h2 class="text-2xl font-black">Upgrade Your Plan</h2>
+                                    <p class="opacity-90">Choose the plan that fits your league</p>
+                                </div>
+                                <button onclick="closeUpgradeModal()" class="text-white/80 hover:text-white text-3xl">&times;</button>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6">
+                            <!-- Billing Toggle -->
+                            <div class="flex justify-center mb-8">
+                                <div class="bg-slate-100 rounded-full p-1 flex">
+                                    <button onclick="setUpgradeBilling('monthly')" class="px-6 py-2 rounded-full font-bold transition-all ${period === 'monthly' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:text-slate-800'}">
+                                        Monthly
+                                    </button>
+                                    <button onclick="setUpgradeBilling('annual')" class="px-6 py-2 rounded-full font-bold transition-all ${period === 'annual' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:text-slate-800'}">
+                                        Annual <span class="text-emerald-600 text-sm">(Save 10%)</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Pricing Cards -->
+                            <div class="grid md:grid-cols-3 gap-6">
+                                <!-- Basic -->
+                                <div class="border-2 ${currentTier === 'basic' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200'} rounded-xl p-6">
+                                    <h3 class="text-xl font-bold text-slate-800">Basic</h3>
+                                    <p class="text-slate-500 text-sm mb-4">For small leagues</p>
+                                    <div class="mb-4">
+                                        <span class="text-4xl font-black text-slate-800">$${prices.basic.price}</span>
+                                        <span class="text-slate-500">${prices.basic.period}</span>
+                                        ${basicNoteHtml}
+                                    </div>
+                                    <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                                        <li>✓ Up to 10 teams</li>
+                                        <li>✓ Team standings</li>
+                                        <li>✓ Top 5 player rankings</li>
+                                        <li>✓ Current season data</li>
+                                        <li>✓ Schedule management</li>
+                                    </ul>
+                                    ${basicButton}
+                                </div>
+                                
+                                <!-- Pro -->
+                                <div class="border-2 ${currentTier === 'pro' ? 'border-emerald-500 bg-emerald-50' : 'border-emerald-500'} rounded-xl p-6 relative">
+                                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
+                                    <h3 class="text-xl font-bold text-emerald-700">Pro</h3>
+                                    <p class="text-slate-500 text-sm mb-4">For growing leagues</p>
+                                    <div class="mb-4">
+                                        <span class="text-4xl font-black text-emerald-700">$${prices.pro.price}</span>
+                                        <span class="text-slate-500">${prices.pro.period}</span>
+                                        ${proNoteHtml}
+                                    </div>
+                                    <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                                        <li>✓ Up to 20 teams</li>
+                                        <li>✓ Full team stats</li>
+                                        <li>✓ Top 20 player rankings</li>
+                                        <li>✓ Player match & game stats</li>
+                                        <li>✓ 3 years of history</li>
+                                        <li>✓ Photo scoresheet upload</li>
+                                    </ul>
+                                    ${proButton}
+                                </div>
+                                
+                                <!-- Premium -->
+                                <div class="border-2 ${currentTier === 'premium' ? 'border-orange-500 bg-orange-50' : 'border-orange-400'} rounded-xl p-6 bg-gradient-to-b from-orange-50 to-white">
+                                    <h3 class="text-xl font-bold text-orange-600">Premium</h3>
+                                    <p class="text-slate-500 text-sm mb-4">For serious leagues</p>
+                                    <div class="mb-4">
+                                        <span class="text-4xl font-black text-orange-600">$${prices.premium.price}</span>
+                                        <span class="text-slate-500">${prices.premium.period}</span>
+                                        ${premiumNoteHtml}
+                                    </div>
+                                    <ul class="space-y-2 text-sm text-slate-600 mb-6">
+                                        <li>✓ Unlimited teams</li>
+                                        <li>✓ Complete team statistics</li>
+                                        <li>✓ All player rankings</li>
+                                        <li>✓ Full player statistics</li>
+                                        <li>✓ All-time history</li>
+                                        <li>✓ 🏆 Hall of Fame</li>
+                                        <li>✓ Head-to-head records</li>
+                                    </ul>
+                                    ${premiumButton}
+                                </div>
+                            </div>
+                            
+                            <p class="text-center text-slate-500 text-sm mt-6">
+                                Secure payment powered by Stripe. Cancel anytime.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Expose upgrade modal functions to window
+        window.openUpgradeModal = openUpgradeModal;
+        window.closeUpgradeModal = closeUpgradeModal;
+        window.setUpgradeBilling = setUpgradeBilling;
+        window.selectUpgradePlan = selectUpgradePlan;
 
         async function createAccount(username, password, phone, role = null, teamId = null) {
             if (!username || !password) { alert('Email and password required'); return false; }
@@ -3031,13 +3245,13 @@
                     const now = new Date();
                     const daysLeft = Math.ceil((trialEnds - now) / (1000 * 60 * 60 * 24));
                     if (daysLeft > 0) {
-                        trialBadge = `<a href="pricing.html" class="ml-2 px-2 py-1 bg-yellow-400 text-yellow-900 text-xs rounded-full font-bold hover:bg-yellow-300">
+                        trialBadge = `<button onclick="openUpgradeModal()" class="ml-2 px-2 py-1 bg-yellow-400 text-yellow-900 text-xs rounded-full font-bold hover:bg-yellow-300 cursor-pointer">
                             ⏰ ${daysLeft} days left - Upgrade
-                        </a>`;
+                        </button>`;
                     } else {
-                        trialBadge = `<a href="pricing.html" class="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full font-bold hover:bg-red-400">
+                        trialBadge = `<button onclick="openUpgradeModal()" class="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full font-bold hover:bg-red-400 cursor-pointer">
                             ⚠️ Trial Expired - Upgrade Now
-                        </a>`;
+                        </button>`;
                     }
                 } else if (status === 'active') {
                     const tier = state.organization.subscriptionTier;
@@ -3146,6 +3360,9 @@
                     </div>
                 </div>
                 ` : ''}
+                
+                <!-- Upgrade Modal -->
+                ${state.showUpgradeModal ? renderUpgradeModal() : ''}
             `;
         }
 
@@ -4991,9 +5208,9 @@
                         
                         ${!showGames ? `
                             <div class="bg-slate-50 border-t p-3 text-center text-sm">
-                                <a href="pricing.html" class="text-emerald-600 hover:underline">
+                                <button onclick="openUpgradeModal()" class="text-emerald-600 hover:underline cursor-pointer">
                                     Upgrade to Pro to see Games Won/Lost →
-                                </a>
+                                </button>
                             </div>
                         ` : ''}
                     </div>
@@ -5188,9 +5405,9 @@
                                     <span class="font-semibold">${hiddenCount} more player${hiddenCount === 1 ? '' : 's'}</span> not shown
                                     (${tier === 'basic' ? 'Basic plan shows Top 5' : 'Pro plan shows Top 20'})
                                 </p>
-                                <a href="pricing.html" class="text-emerald-600 font-semibold hover:underline">
+                                <button onclick="openUpgradeModal()" class="text-emerald-600 font-semibold hover:underline cursor-pointer">
                                     Upgrade to see all players →
-                                </a>
+                                </button>
                             </div>
                         ` : ''}
                     </div>
@@ -6625,9 +6842,9 @@
                                     </p>
                                 </div>
                             </div>
-                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700">
+                            <button onclick="openUpgradeModal()" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700 cursor-pointer">
                                 Choose Your Plan →
-                            </a>
+                            </button>
                         </div>
                         ` : subStatus === 'active' ? `
                         <div class="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-lg">
@@ -6640,9 +6857,9 @@
                                     <p class="text-sm text-emerald-700">Thank you for subscribing!</p>
                                 </div>
                             </div>
-                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-slate-600 text-white text-center font-bold rounded-lg hover:bg-slate-700">
+                            <button onclick="openUpgradeModal()" class="mt-4 block w-full py-3 bg-slate-600 text-white text-center font-bold rounded-lg hover:bg-slate-700 cursor-pointer">
                                 ${subTier === 'premium' ? 'Manage Subscription' : 'Upgrade Plan'} →
-                            </a>
+                            </button>
                         </div>
                         ` : `
                         <div class="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
@@ -6653,9 +6870,9 @@
                                     <p class="text-sm text-red-700">Renew to continue using Pool League Manager</p>
                                 </div>
                             </div>
-                            <a href="pricing.html" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700">
+                            <button onclick="openUpgradeModal()" class="mt-4 block w-full py-3 bg-emerald-600 text-white text-center font-bold rounded-lg hover:bg-emerald-700 cursor-pointer">
                                 Renew Subscription →
-                            </a>
+                            </button>
                         </div>
                         `}
                         
@@ -7173,7 +7390,7 @@
                 `2,2025-01-22,${teamNames[0] || 'Team A'},BYE,,1`
             ];
             
-            const blob = new Blob([sampleRows.join('\\n')], { type: 'text/csv' });
+            const blob = new Blob([sampleRows.join('\n')], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
