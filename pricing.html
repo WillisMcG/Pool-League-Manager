@@ -6,6 +6,7 @@
     <title>Pricing - Pool League Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 min-h-screen">
     
@@ -15,7 +16,10 @@
             <a href="app.html" class="text-2xl font-black text-white flex items-center gap-2">
                 🎱 Pool League Manager
             </a>
-            <a href="app.html" class="text-white/80 hover:text-white">← Back to App</a>
+            <div class="flex items-center gap-4">
+                <span id="login-status" class="text-white/60 text-sm">Checking login...</span>
+                <a href="app.html" class="text-white/80 hover:text-white">← Back to App</a>
+            </div>
         </div>
     </header>
 
@@ -342,6 +346,37 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcmRobGxldGF0aXhxeXNxZWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwOTU1NDMsImV4cCI6MjA4MzY3MTU0M30._wrv6ONjG3JRkpA1FDPFkKMSn0bi6vhMiR0UZB40IRk';
         
         let billingPeriod = 'monthly';
+        let currentSession = null;
+        let supabaseClient = null;
+        
+        // Initialize Supabase client
+        async function initSupabase() {
+            const { createClient } = supabase;
+            supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            // Get the current auth session from Supabase
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            
+            if (session) {
+                currentSession = session;
+                console.log('Supabase session found:', session.user?.email);
+                
+                // Update login status display
+                const statusEl = document.getElementById('login-status');
+                if (statusEl) {
+                    statusEl.innerHTML = '<span class="text-emerald-400">✓</span> Logged in as ' + session.user.email;
+                }
+            } else {
+                console.log('No Supabase session found');
+                const statusEl = document.getElementById('login-status');
+                if (statusEl) {
+                    statusEl.innerHTML = '<span class="text-yellow-400">⚠</span> Not logged in';
+                }
+            }
+        }
+        
+        // Run on page load
+        initSupabase();
         
         function setBilling(period) {
             billingPeriod = period;
@@ -383,6 +418,12 @@
         }
         
         async function selectPlan(plan) {
+            // Check if user is logged in via Supabase
+            if (!currentSession || !currentSession.access_token) {
+                alert('Please log in to your account first before selecting a plan.\n\nClick "Back to App" and make sure you\'re logged in.');
+                return;
+            }
+            
             const priceId = STRIPE_PRICES[plan][billingPeriod === 'monthly' ? 'monthly' : 'annual'];
             
             // Show loading state
@@ -390,15 +431,16 @@
             buttons.forEach(btn => {
                 btn.disabled = true;
                 btn.style.opacity = '0.5';
+                btn.textContent = 'Processing...';
             });
             
             try {
-                // Call Supabase Edge Function to create checkout session
+                // Use the Supabase access token for authenticated request
                 const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        'Authorization': `Bearer ${currentSession.access_token}`
                     },
                     body: JSON.stringify({
                         priceId: priceId,
@@ -428,6 +470,10 @@
                     btn.disabled = false;
                     btn.style.opacity = '1';
                 });
+                // Restore button text
+                document.querySelector('button[onclick="selectPlan(\'basic\')"]').textContent = 'Choose Basic';
+                document.querySelector('button[onclick="selectPlan(\'pro\')"]').textContent = 'Choose Pro';
+                document.querySelector('button[onclick="selectPlan(\'premium\')"]').textContent = 'Choose Premium';
             }
         }
         
