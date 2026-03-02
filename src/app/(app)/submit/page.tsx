@@ -12,6 +12,8 @@ import { submitScores, withdrawSubmission } from './actions';
 import type { ScheduleEntry, Player, Submission } from '@/types';
 import type { MatchupInput } from '@/lib/validation/score-validation';
 import { Send, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useFeatures } from '@/lib/subscription/use-features';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 
 interface MatchInfo {
   schedule: ScheduleEntry;
@@ -36,6 +38,7 @@ export default function SubmitScoresPage() {
 
   const supabase = createClient();
   const isAdmin = membership?.role === 'admin';
+  const { hasOcrScanning } = useFeatures();
 
   useEffect(() => {
     loadData();
@@ -222,15 +225,21 @@ export default function SubmitScoresPage() {
             weekday: 'short', month: 'short', day: 'numeric',
           })}
         </p>
-        <ScoresheetScanner
-          homeTeamName={selectedMatch.homeTeamName}
-          awayTeamName={selectedMatch.awayTeamName}
-          homeRoster={homeRoster.map(p => p.name)}
-          awayRoster={awayRoster.map(p => p.name)}
-          matchesPerNight={settings?.matches_per_night || 5}
-          bestOf={settings?.best_of || 3}
-          onParsed={setParsedMatchups}
-        />
+        {hasOcrScanning ? (
+          <ScoresheetScanner
+            homeTeamName={selectedMatch.homeTeamName}
+            awayTeamName={selectedMatch.awayTeamName}
+            homeRoster={homeRoster.map(p => p.name)}
+            awayRoster={awayRoster.map(p => p.name)}
+            matchesPerNight={settings?.matches_per_night || 5}
+            bestOf={settings?.best_of || 3}
+            onParsed={setParsedMatchups}
+          />
+        ) : (
+          <div className="mb-4">
+            <UpgradePrompt feature="Scoresheet scanning" requiredTier="Basic" />
+          </div>
+        )}
         <ScoreForm
           homeTeamName={selectedMatch.homeTeamName}
           awayTeamName={selectedMatch.awayTeamName}

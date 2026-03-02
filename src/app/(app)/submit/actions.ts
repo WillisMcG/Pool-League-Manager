@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { validateMatchups, type MatchupInput } from '@/lib/validation/score-validation';
+import { notifyScoreSubmitted, notifyAdminConflict, notifyBothTeamsApproved } from '@/lib/email/notifications';
 
 async function getAuth() {
   const supabase = createServerSupabaseClient();
@@ -67,7 +68,102 @@ export async function submitScores(data: {
   revalidatePath('/standings');
   revalidatePath('/admin');
 
+  // Fire email notifications asynchronously (don't block response)
+  sendScoreNotifications(supabase, auth, data, status, validation.homeScore, validation.awayScore).catch(() => {});
+
   return { error: null, status };
+}
+
+async function sendScoreNotifications(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  auth: { profileId: string; orgId: string },
+  data: { scheduleId: string; teamId: string; seasonId: string },
+  status: string,
+  homeScore: number,
+  awayScore: number,
+) {
+  // Get schedule entry for week/team info
+  const { data: sched } = await supabase
+    .from('schedule')
+    .select('week, home_team_id, away_team_id')
+    .eq('id', data.scheduleId)
+    .single();
+  if (!sched) return;
+
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('id, name, captain_profile_id')
+    .in('id', [sched.home_team_id, sched.away_team_id]);
+  if (!teams || teams.length < 2) return;
+
+  const homeTeam = teams.find(t => t.id === sched.home_team_id);
+  const awayTeam = teams.find(t => t.id === sched.away_team_id);
+  if (!homeTeam || !awayTeam) return;
+
+  // Get submitter's profile
+  const { data: submitter } = await supabase
+    .from('profiles')
+    .select('email, display_name')
+    .eq('id', auth.profileId)
+    .single();
+  if (!submitter?.email) return;
+
+  // Notify submitting captain
+  const mappedStatus = status === 'pending' ? 'pending' : status === 'auto_approved' ? 'auto_approved' : 'conflict';
+  await notifyScoreSubmitted({
+    captainEmail: submitter.email,
+    captainName: submitter.display_name || 'Captain',
+    homeTeam: homeTeam.name,
+    awayTeam: awayTeam.name,
+    week: sched.week,
+    status: mappedStatus as 'pending' | 'auto_approved' | 'conflict',
+  });
+
+  // If auto-approved, notify both captains
+  if (status === 'auto_approved') {
+    const captainIds = [homeTeam.captain_profile_id, awayTeam.captain_profile_id].filter(Boolean);
+    if (captainIds.length > 0) {
+      const { data: captains } = await supabase
+        .from('profiles')
+        .select('email')
+        .in('id', captainIds);
+      const emails = (captains || []).map(c => c.email).filter(Boolean) as string[];
+      if (emails.length > 0) {
+        await notifyBothTeamsApproved({
+          captainEmails: emails,
+          homeTeam: homeTeam.name,
+          awayTeam: awayTeam.name,
+          homeScore,
+          awayScore,
+          week: sched.week,
+        });
+      }
+    }
+  }
+
+  // If conflict, notify admins
+  if (status === 'conflict') {
+    const { data: admins } = await supabase
+      .from('memberships')
+      .select('profile_id')
+      .eq('org_id', auth.orgId)
+      .eq('role', 'admin');
+    if (admins && admins.length > 0) {
+      const { data: adminProfiles } = await supabase
+        .from('profiles')
+        .select('email')
+        .in('id', admins.map(a => a.profile_id));
+      const adminEmails = (adminProfiles || []).map(p => p.email).filter(Boolean) as string[];
+      if (adminEmails.length > 0) {
+        await notifyAdminConflict({
+          adminEmails,
+          homeTeam: homeTeam.name,
+          awayTeam: awayTeam.name,
+          week: sched.week,
+        });
+      }
+    }
+  }
 }
 
 export async function withdrawSubmission(submissionId: string): Promise<{ error: string | null }> {

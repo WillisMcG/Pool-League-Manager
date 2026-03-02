@@ -11,6 +11,8 @@ import { approveSubmission, rejectSubmissions, adminPostScores, processSmsScore 
 import type { ScheduleEntry, Player, Submission, Match, Matchup, SmsPendingScore } from '@/types';
 import type { MatchupInput } from '@/lib/validation/score-validation';
 import { ClipboardCheck, ShieldCheck, History, AlertTriangle, Clock, CheckCircle, MessageSquare } from 'lucide-react';
+import { useFeatures } from '@/lib/subscription/use-features';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 
 type Tab = 'review' | 'direct' | 'recent' | 'sms';
 
@@ -51,6 +53,7 @@ export default function AdminPage() {
 
   const supabase = createClient();
   const isAdmin = membership?.role === 'admin';
+  const { hasSmsSubmission } = useFeatures();
 
   useEffect(() => {
     loadData();
@@ -450,7 +453,12 @@ export default function AdminPage() {
       )}
 
       {/* ── SMS Queue Tab ── */}
-      {tab === 'sms' && (
+      {tab === 'sms' && !hasSmsSubmission && (
+        <div className="py-4">
+          <UpgradePrompt feature="SMS score submission" requiredTier="Pro" />
+        </div>
+      )}
+      {tab === 'sms' && hasSmsSubmission && (
         <div className="space-y-3">
           {smsQueue.length === 0 ? (
             <Card>
