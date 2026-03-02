@@ -14,7 +14,7 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
-  subscription_tier: 'trial' | 'basic' | 'pro' | 'premium';
+  subscription_tier: 'free' | 'trial' | 'basic' | 'pro' | 'premium';
   subscription_status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'expired';
   trial_ends_at: string;
   stripe_customer_id: string | null;
@@ -197,6 +197,10 @@ export interface SmsPendingScore {
   media_url: string | null;
   parsed_data: Record<string, unknown> | null;
   status: 'pending' | 'processed' | 'failed';
+  error_message: string | null;
+  schedule_id: string | null;
+  team_id: string | null;
+  processed_at: string | null;
   created_at: string;
 }
 

@@ -6,6 +6,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { useToast } from '@/components/ui/Toast';
 import { Button, Card, CardHeader, CardBody, Select } from '@/components/ui';
 import { updateSettings } from './actions';
+import { BillingSection } from './billing-section';
 import { VenuesSection } from './venues-section';
 import { SeasonsSection } from './seasons-section';
 
@@ -75,6 +76,9 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-black text-slate-800 mb-6">Settings</h1>
+
+      {/* Billing & Subscription */}
+      <BillingSection />
 
       {/* League Settings */}
       <Card className="mb-6">
